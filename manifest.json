@@ -1,0 +1,59 @@
+{
+  "manifest_version": 3,
+  "name": "Notionify Jobs",
+  "version": "1.0.99",
+  "description": "Track LinkedIn and Indeed job applications into Notion, analyze resume match, and generate tailored materials.",
+  "permissions": [
+    "storage",
+    "activeTab",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://www.linkedin.com/*",
+    "https://*.indeed.com/*",
+    "https://api.notion.com/*",
+    "https://api.openai.com/*",
+    "https://*.pinecone.io/*"
+  ],
+  "background": {
+    "service_worker": "src/background/index.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "Notionify Jobs",
+    "default_popup": "src/popup/index.html"
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.linkedin.com/*",
+        "https://*.indeed.com/*"
+      ],
+      "js": [
+        "src/content/index.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "icons/*",
+        "src/rag/analyzer.js",
+        "src/rag/retriever.js",
+        "src/rag/embedder.js",
+        "src/vendor/pdf/pdf.mjs",
+        "src/vendor/pdf/pdf.worker.mjs"
+      ],
+      "matches": [
+        "https://www.linkedin.com/*",
+        "https://*.indeed.com/*"
+      ]
+    }
+  ]
+}

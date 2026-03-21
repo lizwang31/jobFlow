@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>Job Tracker</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #0f0f11;
+  --surface: #18181b;
+  --surface2: #242428;
+  --border: #2e2e33;
+  --text: #f0f0f2;
+  --muted: #8b8b96;
+  --accent: #6c6ef7;
+  --accent-dim: rgba(108,110,247,0.15);
+  --green: #22c55e;
+  --amber: #f59e0b;
+  --red: #ef4444;
+  --blue: #3b82f6;
+  --teal: #14b8a6;
+  --r: 8px;
+}
+
+body {
+  width: 380px;
+  min-height: 500px;
+  max-height: 640px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 13px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ── Header ── */
+.header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 16px 10px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.header-left { display: flex; align-items: center; gap: 8px; }
+.logo { width: 26px; height: 26px; background: var(--accent); border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 13px; }
+.app-name { font-weight: 600; font-size: 14px; }
+.resume-status { font-size: 10px; padding: 2px 7px; border-radius: 20px; font-weight: 500; }
+.resume-status.ready   { background: rgba(20,184,166,0.15); color: var(--teal); }
+.resume-status.missing { background: rgba(245,158,11,0.15); color: var(--amber); }
+.icon-btn { width: 28px; height: 28px; background: none; border: 1px solid var(--border); border-radius: 6px; cursor: pointer; color: var(--muted); display: flex; align-items: center; justify-content: center; font-size: 14px; transition: all 0.15s; }
+.icon-btn:hover { background: var(--surface); color: var(--text); }
+
+/* ── Tabs ── */
+.tabs { display: flex; padding: 0 16px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.tab { padding: 8px 12px; border: none; background: none; color: var(--muted); cursor: pointer; font-size: 12px; font-weight: 500; border-bottom: 2px solid transparent; margin-bottom: -1px; transition: all 0.15s; white-space: nowrap; }
+.tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.tab:hover:not(.active) { color: var(--text); }
+
+/* ── Content ── */
+.content { flex: 1; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+.panel { display: none; padding: 12px 16px; }
+.panel.active { display: block; }
+
+/* ── Job Card ── */
+.job-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); padding: 11px 12px; margin-bottom: 8px; }
+.job-card:hover { border-color: #3e3e45; }
+.job-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 6px; }
+.job-title { font-weight: 600; font-size: 13px; line-height: 1.3; flex: 1; }
+.job-company { color: var(--muted); font-size: 12px; margin-top: 2px; }
+.job-meta { display: flex; align-items: center; gap: 6px; margin-top: 7px; flex-wrap: wrap; }
+.badge { font-size: 10px; font-weight: 600; padding: 2px 6px; border-radius: 4px; letter-spacing: 0.3px; }
+.badge-linkedin { background: rgba(10,102,194,0.2); color: #60a5fa; }
+.badge-indeed   { background: rgba(34,197,94,0.12); color: #4ade80; }
+.date-label { color: var(--muted); font-size: 11px; }
+.score-pill { font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 20px; }
+.score-high   { background: rgba(34,197,94,0.15);  color: var(--green); }
+.score-mid    { background: rgba(245,158,11,0.15); color: var(--amber); }
+.score-low    { background: rgba(239,68,68,0.12);  color: var(--red);   }
+.job-actions { display: flex; align-items: center; justify-content: space-between; margin-top: 8px; gap: 8px; }
+.status-select { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 11px; padding: 3px 8px; cursor: pointer; outline: none; }
+.btn-analyze { background: var(--accent-dim); border: 1px solid rgba(108,110,247,0.3); border-radius: 6px; color: var(--accent); font-size: 11px; font-weight: 500; padding: 3px 10px; cursor: pointer; transition: all 0.15s; white-space: nowrap; }
+.btn-analyze:hover { background: rgba(108,110,247,0.25); }
+.btn-analyze:disabled { opacity: 0.4; cursor: default; }
+.sync-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
+.sync-dot.on  { background: var(--green); }
+.sync-dot.off { background: var(--amber); }
+.sync-label { font-size: 10px; color: var(--muted); margin-left: 3px; }
+.delete-btn { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 14px; padding: 2px 4px; border-radius: 4px; transition: all 0.15s; line-height: 1; }
+.delete-btn:hover { color: var(--red); background: rgba(239,68,68,0.1); }
+
+/* ── AI Analysis Panel (inline per card) ── */
+.analysis-box { margin-top: 10px; border-top: 1px solid var(--border); padding-top: 10px; display: none; }
+.analysis-box.open { display: block; }
+.analysis-loading { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; padding: 8px 0; }
+.spinner { width: 14px; height: 14px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; flex-shrink: 0; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.analysis-tabs { display: flex; gap: 4px; margin-bottom: 10px; }
+.a-tab { padding: 4px 10px; border: 1px solid var(--border); border-radius: 20px; background: none; color: var(--muted); font-size: 11px; cursor: pointer; transition: all 0.15s; }
+.a-tab.active { background: var(--accent-dim); border-color: rgba(108,110,247,0.4); color: var(--accent); }
+.a-content { display: none; }
+.a-content.active { display: block; }
+.score-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.score-bar-wrap { flex: 1; height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
+.score-bar { height: 100%; border-radius: 3px; transition: width 0.6s ease; }
+.score-num { font-size: 18px; font-weight: 600; min-width: 36px; }
+.summary-text { font-size: 12px; color: var(--muted); line-height: 1.6; margin-bottom: 10px; }
+.tag-list { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 6px; }
+.tag { font-size: 11px; padding: 3px 8px; border-radius: 4px; }
+.tag-green { background: rgba(34,197,94,0.12);  color: var(--green); }
+.tag-red   { background: rgba(239,68,68,0.12);  color: var(--red); }
+.section-label { font-size: 10px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 6px; }
+.cl-text { font-size: 12px; color: var(--muted); line-height: 1.7; white-space: pre-wrap; }
+.copy-btn { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; color: var(--muted); font-size: 11px; padding: 4px 10px; cursor: pointer; transition: all 0.15s; margin-top: 8px; }
+.copy-btn:hover { color: var(--text); }
+.q-list { display: flex; flex-direction: column; gap: 8px; }
+.q-item { background: var(--surface2); border-radius: 6px; padding: 8px 10px; }
+.q-text { font-size: 12px; font-weight: 500; margin-bottom: 4px; line-height: 1.4; }
+.q-hint { font-size: 11px; color: var(--muted); line-height: 1.5; }
+
+/* ── Empty State ── */
+.empty { text-align: center; padding: 40px 20px; color: var(--muted); }
+.empty-icon { font-size: 32px; margin-bottom: 10px; }
+.empty-title { font-size: 14px; font-weight: 500; color: var(--text); margin-bottom: 6px; }
+.empty-text { font-size: 12px; line-height: 1.6; }
+
+/* ── Resume Upload Panel ── */
+.resume-panel {}
+.upload-area { border: 1.5px dashed var(--border); border-radius: var(--r); padding: 24px 16px; text-align: center; cursor: pointer; transition: all 0.15s; margin-bottom: 14px; }
+.upload-area:hover, .upload-area.drag { border-color: var(--accent); background: var(--accent-dim); }
+.upload-icon { font-size: 28px; margin-bottom: 8px; }
+.upload-title { font-weight: 500; margin-bottom: 4px; }
+.upload-hint { font-size: 11px; color: var(--muted); }
+#resume-file-input { display: none; }
+.resume-indexed-info { background: rgba(20,184,166,0.08); border: 1px solid rgba(20,184,166,0.25); border-radius: var(--r); padding: 12px; margin-bottom: 14px; display: none; }
+.resume-indexed-info.show { display: block; }
+.ri-title { font-weight: 500; color: var(--teal); margin-bottom: 3px; font-size: 13px; }
+.ri-sub { font-size: 11px; color: var(--muted); }
+.progress-wrap { background: var(--surface2); border-radius: var(--r); padding: 12px; margin-bottom: 12px; display: none; }
+.progress-wrap.show { display: block; }
+.progress-label { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+.progress-bar-bg { height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
+.progress-bar-fill { height: 100%; background: var(--accent); border-radius: 2px; width: 0%; transition: width 0.4s ease; }
+.btn-primary { width: 100%; background: var(--accent); color: #fff; border: none; border-radius: var(--r); padding: 9px; font-size: 13px; font-weight: 600; cursor: pointer; transition: opacity 0.15s; }
+.btn-primary:hover { opacity: 0.88; }
+.btn-primary:disabled { opacity: 0.4; cursor: default; }
+.btn-secondary { width: 100%; background: var(--surface2); color: var(--text); border: 1px solid var(--border); border-radius: var(--r); padding: 8px; font-size: 12px; cursor: pointer; transition: all 0.15s; margin-top: 6px; }
+.btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
+.feedback { font-size: 12px; text-align: center; margin-top: 8px; min-height: 16px; }
+.feedback.ok  { color: var(--green); }
+.feedback.err { color: var(--red); }
+
+/* ── Settings Panel ── */
+.section-title { font-size: 12px; font-weight: 600; color: var(--text); margin-bottom: 10px; }
+.setting-group { margin-bottom: 12px; }
+.setting-label { font-size: 10px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 5px; display: block; }
+.setting-input { width: 100%; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); color: var(--text); font-size: 12px; padding: 7px 10px; outline: none; font-family: 'SF Mono', monospace; transition: border-color 0.15s; }
+.setting-input:focus { border-color: var(--accent); }
+.setting-hint { font-size: 11px; color: var(--muted); margin-top: 3px; line-height: 1.5; }
+.setting-hint a { color: var(--accent); text-decoration: none; }
+.llm-toggle { display: flex; gap: 6px; }
+.llm-opt { flex: 1; padding: 6px; border: 1px solid var(--border); border-radius: 6px; background: none; color: var(--muted); font-size: 11px; cursor: pointer; text-align: center; transition: all 0.15s; }
+.llm-opt.active { border-color: var(--accent); background: var(--accent-dim); color: var(--accent); }
+.divider { height: 1px; background: var(--border); margin: 12px 0; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-left">
+    <div class="logo">📋</div>
+    <span class="app-name">Job Tracker</span>
+    <span class="resume-status missing" id="resume-badge">Resume Missing</span>
+  </div>
+  <div style="display:flex;gap:6px">
+    <button class="icon-btn" id="refresh-btn" title="Refresh">↻</button>
+  </div>
+</div>
+
+<div class="tabs">
+  <button class="tab active" data-tab="jobs">Applications</button>
+  <button class="tab" data-tab="resume">Resume / RAG</button>
+  <button class="tab" data-tab="settings">Settings</button>
+</div>
+
+<div class="content">
+
+  <!-- ── Jobs Panel ── -->
+  <div class="panel active" id="panel-jobs">
+    <div id="job-list"></div>
+  </div>
+
+  <!-- ── Resume Panel ── -->
+  <div class="panel" id="panel-resume">
+
+    <div class="resume-indexed-info" id="resume-indexed-info">
+      <div class="ri-title">✓ Resume Indexed</div>
+      <div class="ri-sub" id="resume-indexed-sub">Loading...</div>
+    </div>
+
+    <div class="upload-area" id="upload-area">
+      <div class="upload-icon">📄</div>
+      <div class="upload-title">Upload Resume PDF</div>
+      <div class="upload-hint">Click to choose a file, or drag it here<br>It will be parsed and embedded automatically</div>
+      <input type="file" id="resume-file-input" accept=".pdf,.txt">
+    </div>
+
+    <div class="progress-wrap" id="progress-wrap">
+      <div class="progress-label" id="progress-label">Processing resume...</div>
+      <div class="progress-bar-bg"><div class="progress-bar-fill" id="progress-bar"></div></div>
+    </div>
+
+    <button class="btn-primary" id="upload-btn" disabled>Upload After Selecting a File</button>
+    <button class="btn-secondary" id="reindex-btn" style="display:none">Upload a New Resume</button>
+    <div class="feedback" id="upload-feedback"></div>
+
+    <div class="divider" style="margin-top:16px"></div>
+    <div class="section-title">How RAG Works</div>
+    <div style="font-size:11px;color:var(--muted);line-height:1.7">
+      After you upload a resume, it is split into chunks and embedded into Pinecone.<br>
+      Each time you click the "AI Analyze" button on a job card, the system will:<br>
+      <br>
+      1. Embed the job description<br>
+      2. Retrieve the most relevant resume snippets<br>
+      3. Call the LLM with JD + resume context<br>
+      4. Generate a match score, cover letter, and interview questions
+    </div>
+  </div>
+
+  <!-- ── Settings Panel ── -->
+  <div class="panel" id="panel-settings">
+    <div class="section-title">Notion Connection</div>
+    <div class="setting-group">
+      <label class="setting-label">Notion Token</label>
+      <input class="setting-input" id="s-notion-token" placeholder="secret_xxxx..." type="password">
+    </div>
+    <div class="setting-group">
+      <label class="setting-label">Notion Database ID</label>
+      <input class="setting-input" id="s-notion-db" placeholder="32-character string">
+    </div>
+
+    <div class="divider"></div>
+    <div class="section-title">RAG Configuration</div>
+
+    <div class="setting-group">
+      <label class="setting-label">LLM Provider</label>
+      <div class="llm-toggle">
+        <button class="llm-opt active" data-llm="openai">OpenAI GPT-4o</button>
+        <button class="llm-opt" data-llm="anthropic">Claude (Anthropic)</button>
+      </div>
+    </div>
+    <div class="setting-group">
+      <label class="setting-label">OpenAI API Key</label>
+      <input class="setting-input" id="s-openai" placeholder="sk-..." type="password">
+      <p class="setting-hint">Used for embeddings (required) and GPT-4o analysis (optional)</p>
+    </div>
+    <div class="setting-group">
+      <label class="setting-label">Anthropic API Key</label>
+      <input class="setting-input" id="s-anthropic" placeholder="sk-ant-..." type="password">
+      <p class="setting-hint">Required only when using Claude for analysis</p>
+    </div>
+    <div class="setting-group">
+      <label class="setting-label">Pinecone API Key</label>
+      <input class="setting-input" id="s-pinecone-key" placeholder="xxxxxxxx-xxxx-..." type="password">
+    </div>
+    <div class="setting-group">
+      <label class="setting-label">Pinecone Index Host</label>
+      <input class="setting-input" id="s-pinecone-host" placeholder="https://xxx-xxxx.svc.xxx.pinecone.io">
+      <p class="setting-hint">Copy this from Pinecone Console → your Index → Host</p>
+    </div>
+
+    <button class="btn-primary" id="save-settings-btn">Save Settings</button>
+    <div class="feedback" id="settings-feedback"></div>
+
+    <div class="divider"></div>
+    <button class="btn-secondary" id="clear-btn" style="color:var(--red)">Clear All Local Records</button>
+  </div>
+
+</div>
+
+<script src="index.js"></script>
+</body>
+</html>
