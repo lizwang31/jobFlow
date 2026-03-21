@@ -1747,15 +1747,37 @@ function extractGenericJobInfo() {
 }
 
 function isExternalJobPage() {
-  if (!EXTERNAL_SITES.has(SITE)) return false;
-  // For ATS pages, only show on job detail pages (not application form pages)
+  // LinkedIn/Indeed handled separately
+  if (SITE === "linkedin" || SITE === "indeed") return false;
+
   const url = window.location.href.toLowerCase();
+
+  // Never show on form/confirmation pages
   const isFormPage =
     url.includes("/apply") ||
     url.includes("/application") ||
     url.includes("submitted") ||
-    url.includes("confirm");
-  return !isFormPage;
+    url.includes("confirm") ||
+    url.includes("thank-you") ||
+    url.includes("thankyou");
+  if (isFormPage) return false;
+
+  // Known ATS platforms — always show on their JD pages
+  if (EXTERNAL_SITES.has(SITE)) return true;
+
+  // Unknown company career sites — detect by URL path patterns
+  const jobUrlPatterns = [
+    "/job/", "/jobs/", "/career/", "/careers/",
+    "/position/", "/positions/", "/opening/", "/openings/",
+    "/vacancy/", "/requisition/", "/jobdetail", "/job-detail",
+    "viewjob", "job_detail", "/opportunities/",
+  ];
+  const urlLooksLikeJob = jobUrlPatterns.some(p => url.includes(p));
+  if (!urlLooksLikeJob) return false;
+
+  // Must have an h1 that looks like a job title (not a homepage)
+  const h1 = document.querySelector("h1")?.innerText?.trim() || "";
+  return h1.length > 3 && h1.length < 300;
 }
 
 // ---------- Recording ----------
@@ -2149,20 +2171,25 @@ async function init() {
     flushQueuedApplications();
     markInjected();
 
-    if (SITE === "linkedin" || SITE === "indeed" || isExternalJobPage()) {
+    const isNativeSite = SITE === "linkedin" || SITE === "indeed";
+    const isJobPage = isNativeSite || isExternalJobPage();
+
+    if (isJobPage) {
       showBadge();
+      window.addEventListener("resize", repositionFloatingSurfaces);
     }
 
-    cacheCurrentJobSnapshot("init");
-    installMessageListener();
-    installPolling();
-    installClickListener();
-    startObserver();
-    window.addEventListener("resize", repositionFloatingSurfaces);
-
-    setTimeout(checkForEasyApplyModal, 1000);
-    setTimeout(checkForEasyApplyModal, 2500);
-    setTimeout(() => checkForApplicationSubmitted("init"), 2000);
+    // Heavy listeners only needed on LinkedIn/Indeed (auto-submission detection)
+    if (isNativeSite) {
+      cacheCurrentJobSnapshot("init");
+      installMessageListener();
+      installPolling();
+      installClickListener();
+      startObserver();
+      setTimeout(checkForEasyApplyModal, 1000);
+      setTimeout(checkForEasyApplyModal, 2500);
+      setTimeout(() => checkForApplicationSubmitted("init"), 2000);
+    }
 
     debug("Init success");
   } catch (e) {
