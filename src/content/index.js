@@ -8,8 +8,19 @@ const SITE = (() => {
   const host = window.location.hostname;
   if (host.includes("linkedin.com")) return "linkedin";
   if (host.includes("indeed.com")) return "indeed";
+  if (host.includes("greenhouse.io")) return "greenhouse";
+  if (host.includes("lever.co")) return "lever";
+  if (host.includes("myworkdayjobs.com")) return "workday";
+  if (host.includes("bamboohr.com")) return "bamboohr";
+  if (host.includes("smartrecruiters.com")) return "smartrecruiters";
+  if (host.includes("jobvite.com")) return "jobvite";
+  if (host.includes("ashbyhq.com")) return "ashby";
+  if (host.includes("breezy.hr")) return "breezy";
+  if (host.includes("icims.com")) return "icims";
   return "unknown";
 })();
+
+const EXTERNAL_SITES = new Set(["greenhouse","lever","workday","bamboohr","smartrecruiters","jobvite","ashby","breezy","icims"]);
 
 const recordedJobIds = new Set();
 let lastPolledJobId = "";
@@ -150,7 +161,7 @@ function ensurePreviewPanel() {
     box-shadow: 0 24px 54px rgba(0,0,0,0.34);
     backdrop-filter: blur(14px);
     -webkit-backdrop-filter: blur(14px);
-    padding: 16px 16px 14px;
+    padding: 0;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   `;
 
@@ -168,11 +179,92 @@ function closePreviewPrompt() {
   previewPromptOpen = false;
 }
 
+function showGenericSavePrompt() {
+  closePreviewPrompt();
+  const job = sanitizeJobPayload(extractGenericJobInfo());
+  const hasJd = (job.jdText || "").length > 200;
+
+  const prompt = document.createElement("div");
+  prompt.id = "notionify-preview-prompt";
+  prompt.style.cssText = `
+    position: fixed;
+    top: 80px;
+    right: 56px;
+    z-index: 2147483647;
+    width: min(300px, calc(100vw - 120px));
+    border-radius: 16px;
+    border: 1px solid rgba(255,255,255,0.08);
+    background: rgba(11,15,24,0.97);
+    color: #e5e7eb;
+    box-shadow: 0 20px 44px rgba(0,0,0,0.32);
+    padding: 14px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  `;
+
+  const inputStyle = `width:100%;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:#e5e7eb;font-size:13px;padding:7px 10px;outline:none;box-sizing:border-box;font-family:inherit`;
+
+  prompt.innerHTML = `
+    <div style="font-size:11px;color:#6c6ef7;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;margin-bottom:10px">Save Job</div>
+    <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px">
+      <input id="nt-save-title" value="${escapeHtml(job.title)}" placeholder="Job Title" style="${inputStyle}"/>
+      <input id="nt-save-company" value="${escapeHtml(job.company)}" placeholder="Company" style="${inputStyle}"/>
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:8px">
+      <button id="notionify-preview-cancel" type="button" style="border:1px solid rgba(255,255,255,0.1);background:transparent;color:#cbd5e1;border-radius:999px;padding:7px 12px;font:600 12px/1 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;cursor:pointer">Cancel</button>
+      ${hasJd ? `<button id="nt-save-analyze" type="button" style="border:1px solid rgba(108,110,247,0.4);background:rgba(108,110,247,0.12);color:#a5b4fc;border-radius:999px;padding:7px 12px;font:600 12px/1 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;cursor:pointer">Analyze</button>` : ""}
+      <button id="nt-save-confirm" type="button" style="border:0;background:linear-gradient(135deg,#6c6ef7 0%,#5254cc 100%);color:#fff;border-radius:999px;padding:7px 12px;font:700 12px/1 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;cursor:pointer">Save Applied</button>
+    </div>
+  `;
+
+  document.body.appendChild(prompt);
+  positionFloatingSurface(prompt, 300, hasJd ? 170 : 150);
+  previewPromptOpen = true;
+
+  const getEditedJob = () => ({
+    ...job,
+    title: prompt.querySelector("#nt-save-title")?.value?.trim() || job.title,
+    company: prompt.querySelector("#nt-save-company")?.value?.trim() || job.company,
+  });
+
+  prompt.querySelector("#notionify-preview-cancel")?.addEventListener("click", closePreviewPrompt);
+
+  prompt.querySelector("#nt-save-confirm")?.addEventListener("click", () => {
+    const editedJob = getEditedJob();
+    closePreviewPrompt();
+    sendJobAppliedMessage(editedJob);
+    showToast(`✓ Saved: ${editedJob.company} — ${editedJob.title}`);
+  });
+
+  prompt.querySelector("#nt-save-analyze")?.addEventListener("click", () => {
+    const editedJob = getEditedJob();
+    closePreviewPrompt();
+    // Merge edits back so analysis uses correct title/company
+    cachedLastJobSnapshot = { jobId: editedJob.url, job: editedJob, capturedAt: Date.now(), reason: "manual-external" };
+    runPreviewAnalysis();
+  });
+
+  setTimeout(() => {
+    const handleOutsideClick = (event) => {
+      if (!previewPromptOpen) { document.removeEventListener("click", handleOutsideClick, true); return; }
+      const actionBtn = document.getElementById("notionify-analyze-btn");
+      if (prompt.contains(event.target) || actionBtn?.contains(event.target)) return;
+      closePreviewPrompt();
+      document.removeEventListener("click", handleOutsideClick, true);
+    };
+    document.addEventListener("click", handleOutsideClick, true);
+  }, 0);
+}
+
 function togglePreviewPrompt() {
   if (previewAnalysisBusy) return;
 
   if (previewPromptOpen) {
     closePreviewPrompt();
+    return;
+  }
+
+  if (EXTERNAL_SITES.has(SITE)) {
+    showGenericSavePrompt();
     return;
   }
 
@@ -362,50 +454,97 @@ function repositionFloatingSurfaces() {
   positionFloatingSurface(document.getElementById("notionify-preview-panel"), 360, 520);
 }
 
+function ensureContentStyles() {
+  if (document.getElementById("notionify-content-styles")) return;
+  const style = document.createElement("style");
+  style.id = "notionify-content-styles";
+  style.textContent = `
+    @keyframes notionify-spin { to { transform: rotate(360deg); } }
+    @keyframes notionify-shimmer {
+      0% { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+    .notionify-skel {
+      background: linear-gradient(90deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.09) 50%, rgba(255,255,255,0.04) 100%);
+      background-size: 200% 100%;
+      animation: notionify-shimmer 1.5s ease infinite;
+      border-radius: 8px;
+    }
+  `;
+  (document.head || document.documentElement).appendChild(style);
+}
+
+function isKeyword(text) {
+  if (!text || typeof text !== "string") return false;
+  if (text.length > 40) return false;
+  if (text.split(/\s+/).length > 4) return false;
+  if (/[.,;:!?]/.test(text)) return false;
+  return true;
+}
+
 function setPreviewPanelLoading(title) {
+  ensureContentStyles();
   const panel = ensurePreviewPanel();
   panel.innerHTML = `
-    <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px">
+    <div style="position:sticky;top:0;z-index:10;background:rgba(11,15,24,0.98);padding:14px 16px 12px;border-bottom:1px solid rgba(255,255,255,0.06);display:flex;justify-content:space-between;align-items:flex-start;gap:12px;border-radius:18px 18px 0 0">
       <div>
-        <div style="font-size:13px;color:#fda4af;font-weight:700;letter-spacing:0.04em;text-transform:uppercase">Preview Analysis</div>
-        <div style="font-size:18px;font-weight:700;color:#f8fafc;margin-top:4px">${escapeHtml(title || "Current Job")}</div>
+        <div style="font-size:11px;color:#6c6ef7;font-weight:700;letter-spacing:0.06em;text-transform:uppercase">Preview Analysis</div>
+        <div style="font-size:17px;font-weight:700;color:#f8fafc;margin-top:4px">${escapeHtml(title || "Current Job")}</div>
       </div>
-      <button id="notionify-preview-close" type="button" style="border:0;background:transparent;color:#94a3b8;font-size:20px;cursor:pointer">×</button>
+      <button id="notionify-preview-close" type="button" style="border:0;background:transparent;color:#64748b;font-size:20px;cursor:pointer;line-height:1;padding:2px 6px;border-radius:4px;flex-shrink:0">×</button>
     </div>
-    <div style="font-size:13px;color:#cbd5e1;line-height:1.6;padding:10px 0">Analyzing your resume against this job description...</div>
+    <div style="padding:14px 16px">
+      <div style="display:flex;align-items:center;gap:10px;color:#64748b;font-size:13px;margin-bottom:18px">
+        <div style="width:16px;height:16px;border:2px solid rgba(108,110,247,0.25);border-top-color:#6c6ef7;border-radius:50%;animation:notionify-spin 0.8s linear infinite;flex-shrink:0"></div>
+        Analyzing your resume against this job...
+      </div>
+      <div class="notionify-skel" style="height:52px;margin-bottom:10px"></div>
+      <div class="notionify-skel" style="height:20px;width:75%;margin-bottom:8px"></div>
+      <div class="notionify-skel" style="height:20px;width:88%;margin-bottom:8px"></div>
+      <div class="notionify-skel" style="height:20px;width:62%;margin-bottom:18px"></div>
+      <div class="notionify-skel" style="height:34px;margin-bottom:7px"></div>
+      <div class="notionify-skel" style="height:34px;margin-bottom:7px"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:14px">
+        ${[1,2,3,4,5,6].map(() => `<div class="notionify-skel" style="height:30px"></div>`).join("")}
+      </div>
+    </div>
   `;
   panel.querySelector("#notionify-preview-close")?.addEventListener("click", closePreviewPanel);
 }
 
 function renderPreviewPanel(job, analysis) {
+  ensureContentStyles();
   const panel = ensurePreviewPanel();
-  const scoreColor = analysis.matchScore >= 70 ? "#34d399" : analysis.matchScore >= 45 ? "#f59e0b" : "#f87171";
-  const matched = (analysis.keywordsMatched || []).slice(0, 10);
-  const missing = (analysis.keywordsMissing || []).slice(0, 10);
+  const scoreColor = analysis.matchScore >= 70 ? "#34d399" : analysis.matchScore >= 45 ? "#fbbf24" : "#f87171";
   const strengths = (analysis.strengths || []).slice(0, 3);
   const gaps = (analysis.gaps || []).slice(0, 3);
+  const matched = (analysis.keywordsMatched || []).filter(isKeyword).slice(0, 20);
+  const missing = (analysis.keywordsMissing || []).filter(isKeyword).slice(0, 20);
 
   panel.innerHTML = `
-    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:12px">
+    <div style="position:sticky;top:0;z-index:10;background:rgba(11,15,24,0.98);padding:14px 16px 12px;border-bottom:1px solid rgba(255,255,255,0.06);display:flex;justify-content:space-between;align-items:flex-start;gap:12px;border-radius:18px 18px 0 0">
       <div>
-        <div style="font-size:13px;color:#fda4af;font-weight:700;letter-spacing:0.04em;text-transform:uppercase">Preview Analysis</div>
-        <div style="font-size:18px;font-weight:700;color:#f8fafc;margin-top:4px">${escapeHtml(job.title || "Current Job")}</div>
-        <div style="font-size:13px;color:#94a3b8;margin-top:4px">${escapeHtml(job.company || "")}</div>
+        <div style="font-size:11px;color:#6c6ef7;font-weight:700;letter-spacing:0.06em;text-transform:uppercase">Preview Analysis</div>
+        <div style="font-size:17px;font-weight:700;color:#f8fafc;margin-top:4px">${escapeHtml(job.title || "Current Job")}</div>
+        <div style="font-size:12px;color:#475569;margin-top:2px">${escapeHtml(job.company || "")}</div>
       </div>
-      <button id="notionify-preview-close" type="button" style="border:0;background:transparent;color:#94a3b8;font-size:20px;cursor:pointer">×</button>
+      <button id="notionify-preview-close" type="button" style="border:0;background:transparent;color:#64748b;font-size:20px;cursor:pointer;line-height:1;padding:2px 6px;border-radius:4px;flex-shrink:0">×</button>
     </div>
-    <div style="display:flex;align-items:end;gap:12px;margin:10px 0 14px">
-      <div style="font-size:38px;font-weight:800;color:${scoreColor};line-height:1">${analysis.matchScore ?? "-"}</div>
-      <div style="font-size:12px;color:#94a3b8;line-height:1.6">
-        <div>Keyword ${analysis.keywordScore ?? "-"}</div>
-        <div>Semantic ${analysis.semanticScore ?? "-"}</div>
+    <div style="padding:14px 16px">
+      <div style="display:flex;align-items:center;gap:14px;margin-bottom:14px">
+        <div style="font-size:42px;font-weight:800;color:${scoreColor};line-height:1">${analysis.matchScore ?? "-"}</div>
+        <div style="flex:1">
+          <div style="height:5px;background:rgba(255,255,255,0.07);border-radius:3px;overflow:hidden;margin-bottom:7px">
+            <div style="height:100%;width:${analysis.matchScore ?? 0}%;background:${scoreColor};border-radius:3px"></div>
+          </div>
+          <div style="font-size:11px;color:#475569">Keyword ${analysis.keywordScore ?? "-"}  ·  Semantic ${analysis.semanticScore ?? "-"}</div>
+        </div>
       </div>
+      <div style="font-size:13px;color:#94a3b8;line-height:1.7;margin-bottom:14px">${escapeHtml(analysis.matchSummary || "")}</div>
+      ${renderPreviewList("Strengths", strengths, "rgba(52,211,153,0.07)", "#34d399", "rgba(52,211,153,0.15)")}
+      ${renderPreviewList("Gaps", gaps, "rgba(248,113,113,0.07)", "#f87171", "rgba(248,113,113,0.15)")}
+      ${renderKeywordSection(matched, missing)}
     </div>
-    <div style="font-size:13px;color:#d1d5db;line-height:1.7;margin-bottom:14px">${escapeHtml(analysis.matchSummary || "No summary returned.")}</div>
-    ${renderPreviewList("Strengths", strengths, "#1f3b2f", "#4ade80")}
-    ${renderPreviewList("Gaps", gaps, "#402426", "#f87171")}
-    ${renderPreviewTags("Matched Keywords", matched, "#123627", "#86efac")}
-    ${renderPreviewTags("Missing Keywords", missing, "#3f2027", "#fda4af")}
   `;
   panel.querySelector("#notionify-preview-close")?.addEventListener("click", closePreviewPanel);
 }
@@ -413,37 +552,53 @@ function renderPreviewPanel(job, analysis) {
 function renderPreviewError(title, message) {
   const panel = ensurePreviewPanel();
   panel.innerHTML = `
-    <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px">
+    <div style="position:sticky;top:0;z-index:10;background:rgba(11,15,24,0.98);padding:14px 16px 12px;border-bottom:1px solid rgba(255,255,255,0.06);display:flex;justify-content:space-between;align-items:flex-start;gap:12px;border-radius:18px 18px 0 0">
       <div>
-        <div style="font-size:13px;color:#fda4af;font-weight:700;letter-spacing:0.04em;text-transform:uppercase">Preview Analysis</div>
-        <div style="font-size:18px;font-weight:700;color:#f8fafc;margin-top:4px">${escapeHtml(title || "Current Job")}</div>
+        <div style="font-size:11px;color:#6c6ef7;font-weight:700;letter-spacing:0.06em;text-transform:uppercase">Preview Analysis</div>
+        <div style="font-size:17px;font-weight:700;color:#f8fafc;margin-top:4px">${escapeHtml(title || "Current Job")}</div>
       </div>
-      <button id="notionify-preview-close" type="button" style="border:0;background:transparent;color:#94a3b8;font-size:20px;cursor:pointer">×</button>
+      <button id="notionify-preview-close" type="button" style="border:0;background:transparent;color:#64748b;font-size:20px;cursor:pointer;line-height:1;padding:2px 6px;border-radius:4px;flex-shrink:0">×</button>
     </div>
-    <div style="font-size:13px;color:#fda4af;line-height:1.6">${escapeHtml(message)}</div>
+    <div style="padding:14px 16px;font-size:13px;color:#f87171;line-height:1.6">${escapeHtml(message)}</div>
   `;
   panel.querySelector("#notionify-preview-close")?.addEventListener("click", closePreviewPanel);
 }
 
-function renderPreviewList(title, items, bg, color) {
+function renderPreviewList(title, items, bg, color, borderColor) {
   if (!items.length) return "";
   return `
-    <div style="margin-top:14px">
+    <div style="margin-bottom:14px">
       <div style="font-size:11px;color:#94a3b8;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;margin-bottom:8px">${title}</div>
       ${items.map((item) => `
-        <div style="font-size:12px;line-height:1.55;background:${bg};color:${color};border-radius:10px;padding:10px 12px;margin-bottom:8px">${escapeHtml(item)}</div>
+        <div style="font-size:12px;line-height:1.55;background:${bg};color:${color};border:1px solid ${borderColor};border-radius:8px;padding:8px 11px;margin-bottom:6px">${escapeHtml(item)}</div>
       `).join("")}
     </div>
   `;
 }
 
-function renderPreviewTags(title, items, bg, color) {
-  if (!items.length) return "";
+function renderKeywordSection(matched, missing) {
+  if (!matched.length && !missing.length) return "";
+  const total = matched.length + missing.length;
+  const pct = total ? Math.round((matched.length / total) * 100) : 0;
+  const statusColor = pct >= 70 ? "#34d399" : pct >= 45 ? "#fbbf24" : "#f87171";
+  const statusLabel = pct >= 70 ? "Good" : pct >= 45 ? "Needs Work" : "Weak";
+  const allKeywords = [
+    ...matched.map(k => ({ text: k, matched: true })),
+    ...missing.map(k => ({ text: k, matched: false })),
+  ];
   return `
-    <div style="margin-top:14px">
-      <div style="font-size:11px;color:#94a3b8;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;margin-bottom:8px">${title}</div>
-      <div style="display:flex;flex-wrap:wrap;gap:8px">
-        ${items.map((item) => `<span style="font-size:12px;background:${bg};color:${color};border-radius:999px;padding:6px 10px">${escapeHtml(item)}</span>`).join("")}
+    <div style="margin-top:4px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div style="font-size:11px;color:#94a3b8;font-weight:700;letter-spacing:0.05em;text-transform:uppercase">Keyword Match</div>
+        <div style="font-size:11px;font-weight:700;color:${statusColor}">${matched.length} / ${total} (${pct}%) · ${statusLabel}</div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px">
+        ${allKeywords.map(({ text, matched: m }) => `
+          <div style="display:flex;align-items:center;gap:6px;font-size:12px;padding:5px 8px;border-radius:7px;background:${m ? "rgba(52,211,153,0.07)" : "rgba(255,255,255,0.03)"};border:1px solid ${m ? "rgba(52,211,153,0.18)" : "rgba(255,255,255,0.06)"}">
+            <span style="color:${m ? "#34d399" : "#475569"};flex-shrink:0;font-size:11px">${m ? "✓" : "✗"}</span>
+            <span style="color:${m ? "#d1fae5" : "#64748b"};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(text)}</span>
+          </div>
+        `).join("")}
       </div>
     </div>
   `;
@@ -994,6 +1149,9 @@ async function loadAnalysisTools() {
 }
 
 async function loadAnalysisSettings() {
+  if (!chrome?.storage?.sync?.get) {
+    throw new Error("Extension storage is unavailable. Please refresh the page after reloading the extension.");
+  }
   return chrome.storage.sync.get([
     "openaiKey",
     "anthropicKey",
@@ -1013,6 +1171,11 @@ function getPreviewAnalysisJob() {
 async function runPreviewAnalysis() {
   if (previewAnalysisBusy) return;
   closePreviewPrompt();
+
+  if (!chrome?.runtime?.id || !chrome?.storage?.local || !chrome?.storage?.sync) {
+    renderPreviewError("Preview Analysis", "Extension context is unavailable. Please refresh the page and try again.");
+    return;
+  }
 
   const job = getPreviewAnalysisJob();
   if (!isKnownTitle(job.title) && !job.jdText) {
@@ -1519,16 +1682,80 @@ function extractIndeedCompanyFallback() {
 function extractJobInfo() {
   if (SITE === "linkedin") return extractLinkedIn();
   if (SITE === "indeed") return extractIndeed();
+  return extractGenericJobInfo();
+}
 
-  return {
-    title: document.querySelector("h1")?.innerText?.trim() || "Unknown Position",
-    company: "",
-    location: "",
-    salary: "",
-    jdText: truncateText(cleanMultilineText(document.body?.innerText || "")),
-    url: window.location.href,
-    platform: "Unknown"
+function extractGenericJobInfo() {
+  // Job title — prefer h1, fallback to page title
+  const h1 = document.querySelector("h1")?.innerText?.trim() || "";
+  const titleFromPage = document.title.split(/[|\-–·]/)[0].trim();
+  const title = h1 || titleFromPage || "Unknown Position";
+
+  // Company — og:site_name > known ATS selectors > domain name
+  const ogSite = document.querySelector('meta[property="og:site_name"]')?.content?.trim() || "";
+  const atsCompany = firstText([
+    "[data-testid='company-name']",
+    "[class*='company-name']",
+    "[class*='companyName']",
+    ".company",
+    "[itemprop='hiringOrganization'] [itemprop='name']",
+  ]);
+  const domainCompany = (() => {
+    const host = window.location.hostname.replace(/^www\./, "");
+    const parts = host.split(".");
+    const name = parts.length >= 2 ? parts[parts.length - 2] : parts[0];
+    return name.charAt(0).toUpperCase() + name.slice(1);
+  })();
+  const company = ogSite || atsCompany || domainCompany || "Unknown Company";
+
+  // Location
+  const location = firstText([
+    "[data-testid*='location']",
+    "[class*='location']",
+    "[class*='Location']",
+    "[itemprop='jobLocation']",
+  ]);
+
+  // JD text — prefer dedicated containers, fallback to <main>/<article>
+  const jdEl = document.querySelector([
+    "[class*='job-description']",
+    "[class*='jobDescription']",
+    "[id*='job-description']",
+    "[id*='jobDescription']",
+    "[class*='description']",
+    "main",
+    "article",
+    "[role='main']",
+  ].join(", "));
+  const jdText = truncateText(cleanMultilineText(jdEl?.innerText || document.body?.innerText || ""));
+
+  // Platform label
+  const platformMap = {
+    greenhouse: "Greenhouse",
+    lever: "Lever",
+    workday: "Workday",
+    bamboohr: "BambooHR",
+    smartrecruiters: "SmartRecruiters",
+    jobvite: "Jobvite",
+    ashby: "Ashby",
+    breezy: "Breezy",
+    icims: "iCIMS",
   };
+  const platform = platformMap[SITE] || "External";
+
+  return { title, company, location, salary: "", jdText, url: window.location.href, platform };
+}
+
+function isExternalJobPage() {
+  if (!EXTERNAL_SITES.has(SITE)) return false;
+  // For ATS pages, only show on job detail pages (not application form pages)
+  const url = window.location.href.toLowerCase();
+  const isFormPage =
+    url.includes("/apply") ||
+    url.includes("/application") ||
+    url.includes("submitted") ||
+    url.includes("confirm");
+  return !isFormPage;
 }
 
 // ---------- Recording ----------
@@ -1921,7 +2148,11 @@ async function init() {
     await hydrateSharedState();
     flushQueuedApplications();
     markInjected();
-    showBadge();
+
+    if (SITE === "linkedin" || SITE === "indeed" || isExternalJobPage()) {
+      showBadge();
+    }
+
     cacheCurrentJobSnapshot("init");
     installMessageListener();
     installPolling();

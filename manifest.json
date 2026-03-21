@@ -32,7 +32,16 @@
     {
       "matches": [
         "https://www.linkedin.com/*",
-        "https://*.indeed.com/*"
+        "https://*.indeed.com/*",
+        "https://*.greenhouse.io/*",
+        "https://*.lever.co/*",
+        "https://*.myworkdayjobs.com/*",
+        "https://*.bamboohr.com/*",
+        "https://*.smartrecruiters.com/*",
+        "https://*.jobvite.com/*",
+        "https://*.ashbyhq.com/*",
+        "https://*.breezy.hr/*",
+        "https://*.icims.com/*"
       ],
       "js": [
         "src/content/index.js"
@@ -50,10 +59,7 @@
         "src/vendor/pdf/pdf.mjs",
         "src/vendor/pdf/pdf.worker.mjs"
       ],
-      "matches": [
-        "https://www.linkedin.com/*",
-        "https://*.indeed.com/*"
-      ]
+      "matches": ["<all_urls>"]
     }
   ]
 }
