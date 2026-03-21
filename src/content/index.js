@@ -80,51 +80,46 @@ function showBadge() {
     actionBtn.id = "notionify-analyze-btn";
     actionBtn.type = "button";
     actionBtn.innerHTML = `
-      <span style="
-        width: 22px;
-        height: 22px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        border-radius: 999px;
-        background: linear-gradient(180deg, #ffd7e2 0%, #f5a8bf 100%);
-        box-shadow: inset 0 0 0 1px rgba(255,255,255,0.42);
-        flex: 0 0 auto;
-        font: 800 12px/1 -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-        color: #ffffff;
-      ">
-        N
-      </span>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect x="2" y="7" width="20" height="14" rx="2.5" fill="rgba(108,110,247,0.18)" stroke="#6c6ef7" stroke-width="1.8"/>
+        <path d="M8 7V5.5A2.5 2.5 0 0 1 10.5 3h3A2.5 2.5 0 0 1 16 5.5V7" stroke="#6c6ef7" stroke-width="1.8" stroke-linecap="round"/>
+        <line x1="2" y1="13" x2="22" y2="13" stroke="#6c6ef7" stroke-width="1.5" stroke-linecap="round"/>
+        <line x1="10" y1="13" x2="14" y2="13" stroke="#a5b4fc" stroke-width="2" stroke-linecap="round"/>
+      </svg>
     `;
     actionBtn.dataset.defaultHtml = actionBtn.innerHTML;
     actionBtn.style.cssText = `
       pointer-events: auto;
-      border: 0;
+      border: 1px solid rgba(108,110,247,0.35);
       border-radius: 999px;
-      background: linear-gradient(180deg, rgba(17,24,39,0.96) 0%, rgba(15,23,42,0.98) 100%);
+      background: rgba(15,15,20,0.92);
       color: #f8fafc;
       font: 700 12px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      width: 34px;
-      height: 34px;
+      width: 38px;
+      height: 38px;
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      box-shadow: 0 10px 22px rgba(15,23,42,0.18);
+      box-shadow: 0 4px 16px rgba(108,110,247,0.18), 0 2px 8px rgba(0,0,0,0.3);
       cursor: pointer;
       letter-spacing: 0.01em;
-      transition: transform 0.18s ease, opacity 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+      transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease, background 0.18s ease;
       white-space: nowrap;
       touch-action: none;
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
     `;
     actionBtn.addEventListener("mouseenter", () => {
-      actionBtn.style.transform = "translateY(-2px) scale(1.01)";
-      actionBtn.style.boxShadow = "0 14px 28px rgba(15,23,42,0.22)";
-      actionBtn.style.background = "linear-gradient(180deg, rgba(30,41,59,0.98) 0%, rgba(15,23,42,0.99) 100%)";
+      actionBtn.style.transform = "translateY(-2px) scale(1.06)";
+      actionBtn.style.boxShadow = "0 8px 24px rgba(108,110,247,0.32), 0 2px 8px rgba(0,0,0,0.3)";
+      actionBtn.style.borderColor = "rgba(108,110,247,0.7)";
+      actionBtn.style.background = "rgba(108,110,247,0.15)";
     });
     actionBtn.addEventListener("mouseleave", () => {
-      actionBtn.style.transform = "translateY(0)";
-      actionBtn.style.boxShadow = "0 10px 22px rgba(15,23,42,0.18)";
-      actionBtn.style.background = "linear-gradient(180deg, rgba(17,24,39,0.96) 0%, rgba(15,23,42,0.98) 100%)";
+      actionBtn.style.transform = "translateY(0) scale(1)";
+      actionBtn.style.boxShadow = "0 4px 16px rgba(108,110,247,0.18), 0 2px 8px rgba(0,0,0,0.3)";
+      actionBtn.style.borderColor = "rgba(108,110,247,0.35)";
+      actionBtn.style.background = "rgba(15,15,20,0.92)";
     });
     widget.appendChild(actionBtn);
     mount.appendChild(widget);
@@ -674,10 +669,24 @@ function storageLocalGet(key) {
   return new Promise((resolve) => {
     try {
       chrome.storage.local.get([key], (result) => {
+        const err = chrome.runtime?.lastError;
+        if (err) {
+          if (isIgnorableRuntimeErrorMessage(err.message)) {
+            debug("storageLocalGet skipped:", key, err.message);
+          } else {
+            debugError("storageLocalGet failed:", key, err.message);
+          }
+          resolve(undefined);
+          return;
+        }
         resolve(result?.[key]);
       });
     } catch (e) {
-      debugError("storageLocalGet failed:", key, e);
+      if (isIgnorableRuntimeErrorMessage(e?.message)) {
+        debug("storageLocalGet skipped:", key, e.message);
+      } else {
+        debugError("storageLocalGet failed:", key, e);
+      }
       resolve(undefined);
     }
   });
@@ -686,9 +695,23 @@ function storageLocalGet(key) {
 function storageLocalSet(key, value) {
   return new Promise((resolve) => {
     try {
-      chrome.storage.local.set({ [key]: value }, () => resolve());
+      chrome.storage.local.set({ [key]: value }, () => {
+        const err = chrome.runtime?.lastError;
+        if (err) {
+          if (isIgnorableRuntimeErrorMessage(err.message)) {
+            debug("storageLocalSet skipped:", key, err.message);
+          } else {
+            debugError("storageLocalSet failed:", key, err.message);
+          }
+        }
+        resolve();
+      });
     } catch (e) {
-      debugError("storageLocalSet failed:", key, e);
+      if (isIgnorableRuntimeErrorMessage(e?.message)) {
+        debug("storageLocalSet skipped:", key, e.message);
+      } else {
+        debugError("storageLocalSet failed:", key, e);
+      }
       resolve();
     }
   });
@@ -697,9 +720,23 @@ function storageLocalSet(key, value) {
 function storageLocalRemove(key) {
   return new Promise((resolve) => {
     try {
-      chrome.storage.local.remove(key, () => resolve());
+      chrome.storage.local.remove(key, () => {
+        const err = chrome.runtime?.lastError;
+        if (err) {
+          if (isIgnorableRuntimeErrorMessage(err.message)) {
+            debug("storageLocalRemove skipped:", key, err.message);
+          } else {
+            debugError("storageLocalRemove failed:", key, err.message);
+          }
+        }
+        resolve();
+      });
     } catch (e) {
-      debugError("storageLocalRemove failed:", key, e);
+      if (isIgnorableRuntimeErrorMessage(e?.message)) {
+        debug("storageLocalRemove skipped:", key, e.message);
+      } else {
+        debugError("storageLocalRemove failed:", key, e);
+      }
       resolve();
     }
   });
