@@ -201,18 +201,28 @@ function showGenericSavePrompt() {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   `;
 
-  const inputStyle = `width:100%;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:#e5e7eb;font-size:13px;padding:7px 10px;outline:none;box-sizing:border-box;font-family:inherit`;
+  const labelStyle = `display:block;font-size:10px;font-weight:600;color:#64748b;letter-spacing:0.05em;text-transform:uppercase;margin-bottom:4px`;
+  const inputStyle = `width:100%;background:#1e2130;border:1px solid rgba(108,110,247,0.25);border-radius:8px;color:#f1f5f9;font-size:13px;padding:7px 10px;outline:none;box-sizing:border-box;font-family:inherit`;
 
   prompt.innerHTML = `
-    <div style="font-size:11px;color:#6c6ef7;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;margin-bottom:10px">Save Job</div>
-    <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px">
-      <input id="nt-save-title" value="${escapeHtml(job.title)}" placeholder="Job Title" style="${inputStyle}"/>
-      <input id="nt-save-company" value="${escapeHtml(job.company)}" placeholder="Company" style="${inputStyle}"/>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+      <div style="font-size:11px;color:#6c6ef7;font-weight:700;letter-spacing:0.06em;text-transform:uppercase">Save Job</div>
+      <div style="font-size:10px;color:#475569">${escapeHtml(job.platform || "External")}</div>
     </div>
-    <div style="display:flex;justify-content:flex-end;gap:8px">
-      <button id="notionify-preview-cancel" type="button" style="border:1px solid rgba(255,255,255,0.1);background:transparent;color:#cbd5e1;border-radius:999px;padding:7px 12px;font:600 12px/1 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;cursor:pointer">Cancel</button>
-      ${hasJd ? `<button id="nt-save-analyze" type="button" style="border:1px solid rgba(108,110,247,0.4);background:rgba(108,110,247,0.12);color:#a5b4fc;border-radius:999px;padding:7px 12px;font:600 12px/1 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;cursor:pointer">Analyze</button>` : ""}
-      <button id="nt-save-confirm" type="button" style="border:0;background:linear-gradient(135deg,#6c6ef7 0%,#5254cc 100%);color:#fff;border-radius:999px;padding:7px 12px;font:700 12px/1 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;cursor:pointer">Save Applied</button>
+    <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:14px">
+      <div>
+        <label style="${labelStyle}">Job Title</label>
+        <input id="nt-save-title" value="${escapeHtml(job.title)}" placeholder="e.g. Software Engineer" style="${inputStyle}"/>
+      </div>
+      <div>
+        <label style="${labelStyle}">Company</label>
+        <input id="nt-save-company" value="${escapeHtml(job.company)}" placeholder="e.g. Google" style="${inputStyle}"/>
+      </div>
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;align-items:center">
+      <button id="notionify-preview-cancel" type="button" style="border:none;background:transparent;color:#64748b;font:500 12px/1 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;cursor:pointer;padding:7px 4px">Cancel</button>
+      ${hasJd ? `<button id="nt-save-analyze" type="button" style="border:1px solid rgba(108,110,247,0.35);background:rgba(108,110,247,0.1);color:#a5b4fc;border-radius:8px;padding:7px 12px;font:600 12px/1 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;cursor:pointer">Analyze</button>` : ""}
+      <button id="nt-save-confirm" type="button" style="border:0;background:linear-gradient(135deg,#6c6ef7 0%,#5254cc 100%);color:#fff;border-radius:8px;padding:7px 14px;font:700 12px/1 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;cursor:pointer">Save Applied</button>
     </div>
   `;
 
@@ -1686,13 +1696,19 @@ function extractJobInfo() {
 }
 
 function extractGenericJobInfo() {
-  // Job title — h1 unless it looks like a generic section header, then try h2 / page title
-  const GENERIC_HEADINGS = ["careers", "jobs", "home", "search", "apply", "opportunities", "job search", "find a job"];
+  // Job title — try multiple sources, pick the most specific one
+  const GENERIC_HEADINGS = ["careers", "jobs", "home", "search", "apply", "opportunities", "job search", "find a job", "search jobs"];
   const h1 = document.querySelector("h1")?.innerText?.trim() || "";
-  const h1IsGeneric = !h1 || (h1.length < 40 && GENERIC_HEADINGS.some(g => h1.toLowerCase().includes(g)));
-  const h2 = h1IsGeneric ? (document.querySelector("h2")?.innerText?.trim() || "") : "";
-  const titleFromPage = document.title.split(/[|\-–·]/)[0].trim();
-  const title = (!h1IsGeneric && h1) || h2 || titleFromPage || "Unknown Position";
+  const h1IsGeneric = !h1 || (h1.length < 50 && GENERIC_HEADINGS.some(g => h1.toLowerCase() === g || h1.toLowerCase().startsWith(g)));
+  const h2 = document.querySelector("h2")?.innerText?.trim() || "";
+  const h2IsGeneric = !h2 || GENERIC_HEADINGS.some(g => h2.toLowerCase() === g);
+  // Page title often has "Job Title | Company" or "Job Title - Company Careers"
+  const titleFromPage = document.title
+    .split(/[|\-–·]/)
+    .map(s => s.trim())
+    .filter(s => s.length > 3 && !GENERIC_HEADINGS.some(g => s.toLowerCase() === g))
+    .sort((a, b) => b.length - a.length)[0] || "";
+  const title = (!h1IsGeneric && h1) || (!h2IsGeneric && h2) || titleFromPage || "Unknown Position";
 
   // Company — og:site_name > ATS selectors > subdomain > domain fallback
   const ogSite = document.querySelector('meta[property="og:site_name"]')?.content?.trim() || "";
