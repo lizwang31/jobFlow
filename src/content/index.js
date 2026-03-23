@@ -31,6 +31,7 @@ let previewPromptOpen = false;
 let cachedPendingApplicationContext = null;
 let cachedLastJobSnapshot = null;
 let cachedPreviewAnalysisCache = [];
+let lastApplyInteractionAt = 0;
 const PENDING_QUEUE_KEY = "jobflow_pending_applications";
 const PENDING_APPLICATION_KEY = "jobflow_pending_application_context";
 const LAST_JOB_SNAPSHOT_KEY = "jobflow_last_job_snapshot";
@@ -716,6 +717,12 @@ function isSubmissionConfirmationText(text) {
     "application sent",
     "your application was sent",
     "submitted successfully",
+    "your application has been sent",
+    "we've received your application",
+    "thanks for applying",
+    "thank you for applying",
+    "successfully applied",
+    "you applied",
   ]);
 }
 
@@ -765,8 +772,42 @@ function extractActiveCardText(selectorList) {
   return firstText([
     ...selectorList.map((selector) => `.jobs-search-results-list__list-item--active ${selector}`),
     ...selectorList.map((selector) => `.jobs-search__job-details--container ${selector}`),
-    ...selectorList,
   ]);
+}
+
+function escapeCssAttrValue(value) {
+  return String(value || "")
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"');
+}
+
+function getLinkedInSearchJobId() {
+  try {
+    const url = new URL(window.location.href);
+    return (url.searchParams.get("currentJobId") || "").trim();
+  } catch (_e) {
+    return "";
+  }
+}
+
+function getLinkedInCardByJobId(jobId) {
+  const id = String(jobId || "").trim();
+  if (!id) return null;
+
+  const escaped = escapeCssAttrValue(id);
+  const selectors = [
+    `li[data-occludable-job-id="${escaped}"]`,
+    `div[data-occludable-job-id="${escaped}"]`,
+    `[data-job-id="${escaped}"]`,
+    `a[href*="currentJobId=${escaped}"]`,
+  ];
+
+  for (const selector of selectors) {
+    const node = document.querySelector(selector);
+    if (node) return node;
+  }
+
+  return null;
 }
 
 function getCurrentJobId() {
@@ -915,8 +956,12 @@ async function hydrateSharedState() {
       storageLocalGet(PREVIEW_ANALYSIS_CACHE_KEY),
     ]);
 
-    cachedPendingApplicationContext = pendingCtx || loadJsonFromPageStorage(PENDING_APPLICATION_KEY, null);
-    cachedLastJobSnapshot = lastSnapshot || loadJsonFromPageStorage(LAST_JOB_SNAPSHOT_KEY, null);
+    cachedPendingApplicationContext = getSiteScopedContext(
+      pendingCtx || loadJsonFromPageStorage(PENDING_APPLICATION_KEY, null)
+    );
+    cachedLastJobSnapshot = getSiteScopedContext(
+      lastSnapshot || loadJsonFromPageStorage(LAST_JOB_SNAPSHOT_KEY, null)
+    );
     cachedPreviewAnalysisCache = Array.isArray(previewCache)
       ? previewCache
       : loadJsonFromPageStorage(PREVIEW_ANALYSIS_CACHE_KEY, []);
@@ -947,6 +992,40 @@ function loadQueuedApplications() {
   }
 }
 
+function getSiteHostPattern() {
+  if (SITE === "linkedin") return "linkedin.com";
+  if (SITE === "indeed") return "indeed.com";
+  return "";
+}
+
+function contextMatchesCurrentSite(context) {
+  if (!context) return false;
+
+  const platform = String(context?.job?.platform || context?.platform || "").toLowerCase();
+  if (platform) {
+    if (platform.includes(SITE)) return true;
+    if (SITE === "linkedin" && platform.includes("linkedin")) return true;
+    if (SITE === "indeed" && platform.includes("indeed")) return true;
+  }
+
+  const hostPattern = getSiteHostPattern();
+  const url = String(context?.job?.url || context?.url || "");
+  if (hostPattern && url) {
+    try {
+      const host = new URL(url).hostname.toLowerCase();
+      if (host.includes(hostPattern)) return true;
+    } catch (_e) {
+      if (url.toLowerCase().includes(hostPattern)) return true;
+    }
+  }
+
+  return false;
+}
+
+function getSiteScopedContext(context) {
+  return contextMatchesCurrentSite(context) ? context : null;
+}
+
 function saveQueuedApplications(items) {
   try {
     if (!items.length) {
@@ -961,7 +1040,8 @@ function saveQueuedApplications(items) {
 }
 
 function loadPendingApplicationContext() {
-  return cachedPendingApplicationContext || loadJsonFromPageStorage(PENDING_APPLICATION_KEY, null);
+  const ctx = cachedPendingApplicationContext || loadJsonFromPageStorage(PENDING_APPLICATION_KEY, null);
+  return getSiteScopedContext(ctx);
 }
 
 function savePendingApplicationContext(value) {
@@ -981,7 +1061,8 @@ function savePendingApplicationContext(value) {
 }
 
 function loadLastJobSnapshot() {
-  return cachedLastJobSnapshot || loadJsonFromPageStorage(LAST_JOB_SNAPSHOT_KEY, null);
+  const snapshot = cachedLastJobSnapshot || loadJsonFromPageStorage(LAST_JOB_SNAPSHOT_KEY, null);
+  return getSiteScopedContext(snapshot);
 }
 
 function saveLastJobSnapshot(value) {
@@ -1168,6 +1249,8 @@ async function loadAnalysisSettings() {
     "pineconeKey",
     "pineconeHost",
     "llmProvider",
+    "openaiModel",
+    "openaiReasoningEffort",
   ]);
 }
 
@@ -1352,8 +1435,8 @@ function capturePendingApplication(reason = "unknown") {
   try {
     const jobId = getCurrentJobId();
     const liveJob = sanitizeJobPayload(extractJobInfo());
-    const previousPending = pendingApplication || loadPendingApplicationContext();
-    const lastSnapshot = loadLastJobSnapshot();
+    const previousPending = getSiteScopedContext(pendingApplication || loadPendingApplicationContext());
+    const lastSnapshot = getSiteScopedContext(loadLastJobSnapshot());
     const snapshotMatches =
       lastSnapshot &&
       (
@@ -1407,7 +1490,28 @@ function capturePendingApplication(reason = "unknown") {
 // ---------- Extractors ----------
 
 function extractLinkedIn() {
-  const title = extractActiveCardText([
+  const linkedInJobId = getLinkedInSearchJobId();
+  const jobCard = getLinkedInCardByJobId(linkedInJobId);
+  const detailRoot = document.querySelector(".jobs-search__job-details--container") || document;
+
+  const title =
+    firstTextFromRoot(jobCard, [
+      ".job-card-list__title",
+      ".job-card-container__link",
+      "a[href*='/jobs/view/'] span[aria-hidden='true']",
+    ]) ||
+    firstTextFromRoot(detailRoot, [
+      ".job-details-jobs-unified-top-card__job-title h1",
+      ".job-details-jobs-unified-top-card__job-title a",
+      ".jobs-unified-top-card__job-title h1",
+      ".jobs-unified-top-card__job-title a",
+      ".jobs-unified-top-card__job-title",
+      ".jobs-details-top-card__job-title",
+      ".jobs-details-top-card__content-container h1",
+      "h1.t-24",
+      "h1",
+    ]) ||
+    extractActiveCardText([
     ".job-details-jobs-unified-top-card__job-title h1",
     ".job-details-jobs-unified-top-card__job-title a",
     ".jobs-unified-top-card__job-title h1",
@@ -1415,12 +1519,28 @@ function extractLinkedIn() {
     ".jobs-unified-top-card__job-title",
     ".jobs-details-top-card__job-title",
     ".jobs-details-top-card__content-container h1",
-    ".job-card-list__title",
     "h1.t-24",
     "h1"
   ]);
 
-  const company = extractActiveCardText([
+  const company =
+    firstTextFromRoot(jobCard, [
+      ".job-card-container__company-name",
+      ".artdeco-entity-lockup__subtitle",
+    ]) ||
+    firstTextFromRoot(detailRoot, [
+      ".job-details-jobs-unified-top-card__company-name a",
+      ".job-details-jobs-unified-top-card__company-name",
+      ".job-details-jobs-unified-top-card__primary-description a",
+      ".job-details-jobs-unified-top-card__primary-description-container a",
+      ".jobs-unified-top-card__company-name a",
+      ".jobs-unified-top-card__company-name",
+      ".jobs-unified-top-card__primary-description a",
+      ".jobs-unified-top-card__subtitle-primary-grouping a",
+      ".jobs-details-top-card__company-url",
+      ".topcard__org-name-link",
+    ]) ||
+    extractActiveCardText([
     ".job-details-jobs-unified-top-card__company-name a",
     ".job-details-jobs-unified-top-card__company-name",
     ".job-details-jobs-unified-top-card__primary-description a",
@@ -1430,7 +1550,6 @@ function extractLinkedIn() {
     ".jobs-unified-top-card__primary-description a",
     ".jobs-unified-top-card__subtitle-primary-grouping a",
     ".jobs-details-top-card__company-url",
-    ".job-card-container__company-name",
     ".topcard__org-name-link"
   ]) || extractCompanyFromApplyDialog();
 
@@ -1446,13 +1565,17 @@ function extractLinkedIn() {
   ]);
 
   const jdText = truncateText(cleanMultilineText(firstText([
-    ".jobs-description__container .jobs-box__html-content",
+    ".jobs-description-content__text--stretch",
     ".jobs-description-content__text",
+    ".jobs-description__container .jobs-box__html-content",
+    ".jobs-description__content .jobs-description-content__text",
     ".jobs-box__html-content",
     ".jobs-description",
     "[data-job-id] .jobs-description__container",
     ".jobs-search__job-details--container .jobs-box__html-content",
     ".jobs-search__job-details--container .jobs-description-content__text",
+    "article.jobs-description__container",
+    "[class*='jobs-description__content']",
   ])));
 
   return {
@@ -1703,11 +1826,11 @@ function extractGenericJobInfo() {
   const h2 = document.querySelector("h2")?.innerText?.trim() || "";
   const h2IsGeneric = !h2 || GENERIC_HEADINGS.some(g => h2.toLowerCase() === g);
   // Page title often has "Job Title | Company" or "Job Title - Company Careers"
+  // Take the first non-generic segment (page title usually leads with the job title)
   const titleFromPage = document.title
     .split(/[|\-–·]/)
     .map(s => s.trim())
-    .filter(s => s.length > 3 && !GENERIC_HEADINGS.some(g => s.toLowerCase() === g))
-    .sort((a, b) => b.length - a.length)[0] || "";
+    .filter(s => s.length > 3 && !GENERIC_HEADINGS.some(g => s.toLowerCase() === g))[0] || "";
   const title = (!h1IsGeneric && h1) || (!h2IsGeneric && h2) || titleFromPage || "Unknown Position";
 
   // Company — og:site_name > ATS selectors > subdomain > domain fallback
@@ -1863,7 +1986,7 @@ function sendJobAppliedMessage(job) {
 
 function tryRecordCurrentJob(reason = "unknown") {
   try {
-    if (!pendingApplication) {
+    if (!pendingApplication || !contextMatchesCurrentSite(pendingApplication)) {
       pendingApplication = loadPendingApplicationContext();
     }
 
@@ -1890,15 +2013,19 @@ function tryRecordCurrentJob(reason = "unknown") {
 
     const liveJob = sanitizeJobPayload(extractJobInfo());
     const onConfirmationPage = isSubmissionConfirmationPage();
+    const shouldPreferPendingIdentity =
+      (/^submitted:/.test(reason) || reason === "success-done") &&
+      isKnownTitle(pendingApplication?.job?.title) &&
+      isKnownCompany(pendingApplication?.job?.company);
     const job = {
       ...(pendingApplication?.job || {}),
       ...(onConfirmationPage ? {} : liveJob),
       title:
-        !onConfirmationPage && liveJob.title && liveJob.title !== "Unknown Position"
+        !shouldPreferPendingIdentity && !onConfirmationPage && liveJob.title && liveJob.title !== "Unknown Position"
           ? liveJob.title
           : pendingApplication?.job?.title || "Unknown Position",
       company:
-        !onConfirmationPage && liveJob.company && liveJob.company !== "Unknown Company"
+        !shouldPreferPendingIdentity && !onConfirmationPage && liveJob.company && liveJob.company !== "Unknown Company"
           ? liveJob.company
           : pendingApplication?.job?.company || "Unknown Company",
       location:
@@ -1966,26 +2093,61 @@ function isSubmitLikeText(text) {
   ]);
 }
 
+function getActionContext(element) {
+  const clickable = element?.closest?.("button, [role='button'], a, input[type='submit']") || element;
+  const text = cleanLine(
+    clickable?.innerText ||
+    clickable?.textContent ||
+    element?.innerText ||
+    element?.textContent ||
+    ""
+  ).toLowerCase();
+  const ariaLabel = cleanLine(
+    clickable?.getAttribute?.("aria-label") ||
+    element?.getAttribute?.("aria-label") ||
+    ""
+  ).toLowerCase();
+
+  return { clickable, text, ariaLabel };
+}
+
 function isApplicationSubmittedText(text) {
   return isSubmissionConfirmationText(text);
 }
 
+function markApplyInteraction(reason = "unknown") {
+  lastApplyInteractionAt = Date.now();
+  debug("Apply interaction marked:", reason, new Date(lastApplyInteractionAt).toISOString());
+}
+
+function hasRecentApplyInteraction(maxAgeMs = 15 * 60 * 1000) {
+  return Date.now() - lastApplyInteractionAt <= maxAgeMs;
+}
+
 function getApplicationSentDialog() {
-  const dialog = getLikelyLinkedInDialog();
-  if (!dialog) return null;
+  const selectors = [
+    ".jobs-easy-apply-modal",
+    "[data-test-modal-id='easy-apply-modal']",
+    ".jobs-easy-apply-content",
+    "div[aria-labelledby*='easy-apply']",
+    "[role='dialog']",
+  ];
 
-  const text = cleanLine(dialog.innerText || dialog.textContent || "");
-  if (!text) return null;
+  const dialogs = Array.from(document.querySelectorAll(selectors.join(", ")));
+  for (const dialog of dialogs) {
+    const text = cleanLine(dialog.innerText || dialog.textContent || "");
+    if (!text) continue;
 
-  if (
-    textMatchesAny(text, [
-      "application sent",
-      "your application was sent",
-      "application submitted",
-      "submitted successfully",
-    ])
-  ) {
-    return dialog;
+    if (
+      textMatchesAny(text, [
+        "application sent",
+        "your application was sent",
+        "application submitted",
+        "submitted successfully",
+      ])
+    ) {
+      return dialog;
+    }
   }
 
   return null;
@@ -1996,6 +2158,8 @@ function scheduleSubmissionCheck(reason) {
   window.setTimeout(() => checkForApplicationSubmitted(reason), 800);
   window.setTimeout(() => checkForApplicationSubmitted(reason), 1800);
   window.setTimeout(() => checkForApplicationSubmitted(reason), 3200);
+  window.setTimeout(() => checkForApplicationSubmitted(reason), 5500);
+  window.setTimeout(() => checkForApplicationSubmitted(reason), 9000);
 }
 
 function checkForEasyApplyModal() {
@@ -2041,18 +2205,24 @@ function checkForApplicationSubmitted(reason = "unknown") {
       pendingApplication = loadPendingApplicationContext();
     }
 
+    const recentApply = hasRecentApplyInteraction();
+
     const successDialog = getApplicationSentDialog();
     const candidates = [
       successDialog,
       document.querySelector("[role='alert']"),
       document.querySelector("[aria-live='assertive']"),
       document.querySelector("[aria-live='polite']"),
-      SITE === "indeed" ? document.body : null,
+      SITE === "indeed" || recentApply ? document.body : null,
     ].filter(Boolean);
 
-    const submitted = candidates.some((node) =>
+    let submitted = candidates.some((node) =>
       isApplicationSubmittedText(node.innerText || node.textContent || "")
     );
+
+    if (!submitted && recentApply && isSubmissionConfirmationPage()) {
+      submitted = true;
+    }
 
     if (submitted) {
       debug("Application submission detected:", reason);
@@ -2133,19 +2303,19 @@ function installClickListener() {
         const el = target instanceof Element ? target : null;
         if (!el) return;
 
-        const text = (el.innerText || el.textContent || "").toLowerCase();
-        const ariaLabel = (el.getAttribute?.("aria-label") || "").toLowerCase();
+        const { clickable, text, ariaLabel } = getActionContext(el);
 
         const isApplyBtn =
           isApplyLikeText(text) ||
           isApplyLikeText(ariaLabel) ||
-          !!el.closest?.("[data-control-name='jobdetails_topcard_inapply']") ||
-          !!el.closest?.(".jobs-apply-button") ||
-          !!el.closest?.("#indeedApplyButton") ||
-          !!el.closest?.("[data-testid*='apply']");
+          !!clickable?.closest?.("[data-control-name='jobdetails_topcard_inapply']") ||
+          !!clickable?.closest?.(".jobs-apply-button") ||
+          !!clickable?.closest?.("#indeedApplyButton") ||
+          !!clickable?.closest?.("[data-testid*='apply']");
 
         if (isApplyBtn) {
           debug("Apply-like click captured");
+          markApplyInteraction("apply-click");
           capturePendingApplication("apply-click");
           setTimeout(() => cacheCurrentJobSnapshot("apply-click-delayed"), 250);
           setTimeout(() => capturePendingApplication("apply-click-delayed"), 400);
@@ -2155,11 +2325,14 @@ function installClickListener() {
         const isSubmitBtn =
           isSubmitLikeText(text) ||
           isSubmitLikeText(ariaLabel) ||
-          !!el.closest?.("[aria-label*='Submit application']") ||
-          !!el.closest?.("[data-easy-apply-submit-button]");
+          !!clickable?.closest?.("[aria-label*='Submit application']") ||
+          !!clickable?.closest?.("[data-easy-apply-submit-button]") ||
+          !!clickable?.closest?.("button[form*='easyApply']") ||
+          !!clickable?.closest?.("button[type='submit']");
 
         if (isSubmitBtn) {
           debug("Submit-like click captured");
+          markApplyInteraction("submit-click");
           capturePendingApplication("submit-click");
           setTimeout(() => capturePendingApplication("submit-click-delayed"), 250);
           scheduleSubmissionCheck("submit-click");
@@ -2172,11 +2345,13 @@ function installClickListener() {
           (
             textMatchesAny(text, ["done"]) ||
             textMatchesAny(ariaLabel, ["done"]) ||
-            !!el.closest?.("[aria-label='Done']")
+            !!clickable?.closest?.("[aria-label='Done']") ||
+            !!clickable?.closest?.("button[aria-label*='close']")
           );
 
         if (isDoneBtn) {
           debug("Done button captured on success dialog");
+          markApplyInteraction("done-click");
           tryRecordCurrentJob("success-done");
         }
       } catch (e2) {
@@ -2195,6 +2370,13 @@ async function init() {
 
     await hydrateSharedState();
     flushQueuedApplications();
+    setInterval(flushQueuedApplications, 10000);
+    window.addEventListener("focus", flushQueuedApplications);
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") {
+        flushQueuedApplications();
+      }
+    });
     markInjected();
 
     const isNativeSite = SITE === "linkedin" || SITE === "indeed";
