@@ -733,6 +733,12 @@ function isReviewApplicationText(text) {
     "confirm your application",
     "complete your application",
     "continue your application",
+    // LinkedIn post-apply UI — must never be treated as job titles
+    "manage your notifications",
+    "manage job alerts",
+    "set up job alerts",
+    "turn on job alerts",
+    "get similar jobs",
   ]);
 }
 
@@ -765,7 +771,20 @@ function extractCompanyFromApplyDialog() {
   ]);
 
   const match = heading.match(/apply to\s+(.+)$/i);
-  return match ? cleanLine(match[1]) : "";
+  if (match) {
+    const company = cleanLine(match[1]);
+    if (company && company.length > 0 && company.length < 200) {
+      return company;
+    }
+  }
+
+  const dialogText = firstTextFromRoot(dialog, ["[class*='company']", "[aria-label*='company']", "div"]);
+  if (dialogText && !dialogText.toLowerCase().includes("manage") && !dialogText.toLowerCase().includes("notification")) {
+    const segments = dialogText.split(/[•—|·]/);
+    if (segments[0]) return cleanLine(segments[0]);
+  }
+
+  return "";
 }
 
 function extractActiveCardText(selectorList) {
@@ -808,6 +827,35 @@ function getLinkedInCardByJobId(jobId) {
   }
 
   return null;
+}
+
+function extractJobFromCard(jobId) {
+  const card = getLinkedInCardByJobId(jobId);
+  if (!card) return null;
+
+  const title = firstTextFromRoot(card, [
+    ".job-card-list__title",
+    ".job-card-container__link",
+    "a[href*='/jobs/view/'] span[aria-hidden='true']",
+    ".base-search-card__title",
+  ]);
+  const company = firstTextFromRoot(card, [
+    ".job-card-container__company-name",
+    ".artdeco-entity-lockup__subtitle",
+    "[class*='company-name']",
+  ]);
+
+  if (!title || !company) {
+    debug("extractJobFromCard incomplete:", { jobId, title, company });
+    return null;
+  }
+
+  return {
+    title: cleanLine(title),
+    company: cleanLine(company),
+    url: window.location.href,
+    platform: "LinkedIn",
+  };
 }
 
 function getCurrentJobId() {
@@ -1434,7 +1482,23 @@ function flushQueuedApplications() {
 function capturePendingApplication(reason = "unknown") {
   try {
     const jobId = getCurrentJobId();
-    const liveJob = sanitizeJobPayload(extractJobInfo());
+    let liveJob = sanitizeJobPayload(extractJobInfo());
+
+    if (SITE === "linkedin" && jobId && pendingApplication?.job) {
+      debug("Using cached pending application for LinkedIn", { jobId });
+      pendingApplication.capturedAt = Date.now();
+      pendingApplication.reason = reason;
+      return savePendingApplicationContext(pendingApplication);
+    }
+
+    if (SITE === "linkedin" && jobId) {
+      const cardJob = extractJobFromCard(jobId);
+      if (cardJob && isKnownTitle(cardJob.title) && isKnownCompany(cardJob.company)) {
+        debug("Extracted job from card for LinkedIn", { jobId, title: cardJob.title, company: cardJob.company });
+        liveJob = sanitizeJobPayload({ ...liveJob, ...cardJob });
+      }
+    }
+
     const previousPending = getSiteScopedContext(pendingApplication || loadPendingApplicationContext());
     const lastSnapshot = getSiteScopedContext(loadLastJobSnapshot());
     const snapshotMatches =
@@ -1476,11 +1540,14 @@ function capturePendingApplication(reason = "unknown") {
       reason: `pending:${reason}`,
     });
 
+    return void 0;
+
     debug("Captured pending application:", {
       reason,
       jobId,
       title: pendingApplication.job.title,
       company: pendingApplication.job.company,
+      cardExtracted: !!extractJobFromCard(jobId),
     });
   } catch (e) {
     debugError("capturePendingApplication failed:", e);
@@ -1493,6 +1560,7 @@ function extractLinkedIn() {
   const linkedInJobId = getLinkedInSearchJobId();
   const jobCard = getLinkedInCardByJobId(linkedInJobId);
   const detailRoot = document.querySelector(".jobs-search__job-details--container") || document;
+  const dialogCompany = extractCompanyFromApplyDialog();
 
   const title =
     firstTextFromRoot(jobCard, [
@@ -1524,6 +1592,7 @@ function extractLinkedIn() {
   ]);
 
   const company =
+    dialogCompany ||
     firstTextFromRoot(jobCard, [
       ".job-card-container__company-name",
       ".artdeco-entity-lockup__subtitle",

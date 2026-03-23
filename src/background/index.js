@@ -128,7 +128,28 @@ async function getJobs() {
 }
 
 async function saveJob(job) {
-  const jobs   = await getJobs();
+  const jobs = await getJobs();
+
+  // Dedup: skip if the same job was recorded in the last 10 minutes
+  const tenMinutesAgo = Date.now() - 10 * 60 * 1000;
+  const duplicate = jobs.find((existing) => {
+    const existingTime = new Date(existing.appliedAt || 0).getTime();
+    if (existingTime < tenMinutesAgo) return false;
+
+    const sameUrl = job.url && existing.url && job.url === existing.url;
+    const sameTitleCompany =
+      String(job.title || "").trim().toLowerCase() === String(existing.title || "").trim().toLowerCase() &&
+      String(job.company || "").trim().toLowerCase() === String(existing.company || "").trim().toLowerCase() &&
+      String(job.platform || "") === String(existing.platform || "");
+
+    return sameUrl || sameTitleCompany;
+  });
+
+  if (duplicate) {
+    console.log("[BG] Duplicate job skipped:", job.title, job.company);
+    return duplicate;
+  }
+
   const newJob = { id: `${Date.now()}`, ...normalizeJobRecord(job) };
   await chrome.storage.local.set({
     [STORAGE_KEY]: [newJob, ...jobs].slice(0, MAX_STORED),
