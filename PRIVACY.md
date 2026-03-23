@@ -1,4 +1,4 @@
-# Privacy Policy — Notionify Jobs
+# Privacy Policy — JobFlow
 
 *Last updated: March 2025*
 
@@ -6,7 +6,7 @@
 
 **We collect nothing.**
 
-Notionify Jobs is a fully client-side Chrome extension. It has no servers, no analytics, no telemetry, and no accounts.
+JobFlow is a fully client-side Chrome extension. It has no servers, no analytics, no telemetry, and no accounts.
 
 ## What data stays on your device
 

@@ -1,4 +1,4 @@
-// Notionify Jobs - Content Script
+// JobFlow - Content Script
 // Runs on LinkedIn Jobs and Indeed pages
 // Detects apply actions and sends job info to background.js
 

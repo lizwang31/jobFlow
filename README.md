@@ -1,4 +1,4 @@
-# Notionify Jobs
+# JobFlow
 
 A Chrome extension that automatically tracks your job applications into Notion — with AI-powered resume matching, cover letter generation, and interview prep.
 
@@ -32,7 +32,7 @@ A Chrome extension that automatically tracks your job applications into Notion �
 
 1. Download or clone this repo:
    ```
-   git clone https://github.com/lizwang31/jobTracker.git
+   git clone https://github.com/lizwang31/jobFlow.git
    ```
 2. Open Chrome and go to `chrome://extensions`
 3. Turn on **Developer mode** (toggle in the top-right corner)
@@ -66,7 +66,7 @@ The extension icon will appear in your toolbar.
 
 3. Create a Notion integration:
    - Go to [notion.so/my-integrations](https://www.notion.so/my-integrations) → **New integration**
-   - Give it a name (e.g. "Job Tracker"), click Save
+   - Give it a name (e.g. "JobFlow"), click Save
    - Copy the **Internal Integration Token** (starts with `secret_`)
 
 4. Connect the integration to your database:
@@ -131,7 +131,7 @@ If you want automated daily checks for closed listings, you can set up the GitHu
 
 This is a beta — things may break or behave unexpectedly. If you run into anything:
 
-- Open an issue at [github.com/lizwang31/jobTracker/issues](https://github.com/lizwang31/jobTracker/issues)
+- Open an issue at [github.com/lizwang31/jobFlow/issues](https://github.com/lizwang31/jobFlow/issues)
 - Or just message me directly
 
 Things especially helpful to know:

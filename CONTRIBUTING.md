@@ -1,4 +1,4 @@
-# Contributing to Notionify Jobs
+# Contributing to JobFlow
 
 Thanks for your interest! Here's how to get started.
 

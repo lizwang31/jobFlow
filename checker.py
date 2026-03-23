@@ -1,5 +1,5 @@
 """
-Job Tracker — Daily Status Checker
+JobFlow — Daily Status Checker
 ===================================
 运行逻辑：
   1. 从 Notion 拉取所有"进行中"的申请记录

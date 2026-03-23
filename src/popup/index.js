@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════════════════════
-//  Job Tracker Popup — with RAG analysis UI (zero-backend edition)
+//  JobFlow Popup — with RAG analysis UI (zero-backend edition)
 // ═══════════════════════════════════════════════════════════════════════════
 
 // RAG helpers — loaded lazily so popup opens fast

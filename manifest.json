@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Notionify Jobs",
+  "name": "JobFlow",
   "version": "1.0.99",
   "description": "Track LinkedIn and Indeed job applications into Notion, analyze resume match, and generate tailored materials.",
   "permissions": [
@@ -20,7 +20,7 @@
     "type": "module"
   },
   "action": {
-    "default_title": "Notionify Jobs",
+    "default_title": "JobFlow",
     "default_popup": "src/popup/index.html"
   },
   "icons": {
