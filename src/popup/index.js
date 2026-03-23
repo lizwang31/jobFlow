@@ -34,6 +34,8 @@ let allJobs = [];
 let settings = {};
 let selectedFile = null;
 let resumeIndexed = false;
+const DEFAULT_OPENAI_MODEL = "gpt-5.1";
+const DEFAULT_OPENAI_REASONING = "medium";
 
 // ───────────────────────────────────────────────────────────────────────────
 //  Init
@@ -181,6 +183,8 @@ async function runAnalysis(jobId) {
       pineconeKey:  settings.pineconeKey,
       pineconeHost: settings.pineconeHost,
       llmProvider:  settings.llmProvider || "openai",
+      openaiModel: settings.openaiModel || DEFAULT_OPENAI_MODEL,
+      openaiReasoningEffort: settings.openaiReasoningEffort || DEFAULT_OPENAI_REASONING,
     });
     data.success = true;
 
@@ -481,7 +485,8 @@ function bindTabs() {
 async function loadSettings() {
   const s = await chrome.storage.sync.get([
     "notionToken","notionDbId",
-    "openaiKey","anthropicKey","pineconeKey","pineconeHost","llmProvider"
+    "openaiKey","anthropicKey","pineconeKey","pineconeHost","llmProvider",
+    "openaiModel","openaiReasoningEffort"
   ]);
   document.getElementById("s-notion-token").value  = s.notionToken  || "";
   document.getElementById("s-notion-db").value     = s.notionDbId   || "";
@@ -489,6 +494,8 @@ async function loadSettings() {
   document.getElementById("s-anthropic").value     = s.anthropicKey || "";
   document.getElementById("s-pinecone-key").value  = s.pineconeKey  || "";
   document.getElementById("s-pinecone-host").value = s.pineconeHost || "";
+  document.getElementById("s-openai-model").value = s.openaiModel || DEFAULT_OPENAI_MODEL;
+  document.getElementById("s-openai-reasoning").value = s.openaiReasoningEffort || DEFAULT_OPENAI_REASONING;
   document.querySelectorAll(".llm-opt").forEach(btn => {
     btn.classList.toggle("active", btn.dataset.llm === (s.llmProvider || "openai"));
   });
@@ -513,6 +520,8 @@ function bindSettings() {
       pineconeKey:  document.getElementById("s-pinecone-key").value.trim(),
       pineconeHost: document.getElementById("s-pinecone-host").value.trim(),
       llmProvider:  document.querySelector(".llm-opt.active")?.dataset.llm || "openai",
+      openaiModel: document.getElementById("s-openai-model").value || DEFAULT_OPENAI_MODEL,
+      openaiReasoningEffort: document.getElementById("s-openai-reasoning").value || DEFAULT_OPENAI_REASONING,
     };
     await chrome.storage.sync.set(updated);
     await chrome.storage.sync.remove("workerUrl");

@@ -17,6 +17,8 @@ export async function analyzeJob(job, settings) {
     openaiKey,
     anthropicKey,
     llmProvider = "openai",
+    openaiModel = "gpt-5.1",
+    openaiReasoningEffort = "medium",
   } = settings;
 
   if (!openaiKey) {
@@ -76,7 +78,10 @@ export async function analyzeJob(job, settings) {
   const raw =
     llmProvider === "anthropic"
       ? await callAnthropic(systemPrompt, userPrompt, anthropicKey)
-      : await callOpenAI(systemPrompt, userPrompt, openaiKey);
+      : await callOpenAI(systemPrompt, userPrompt, openaiKey, {
+        model: openaiModel,
+        reasoningEffort: openaiReasoningEffort,
+      });
 
   const parsed = parseAnalysis(raw);
   const keywordAnalysis = analyzeKeywordFit(jdText, resumeRawText, job);
@@ -198,12 +203,73 @@ function analyzeKeywordFit(jdText, resumeText, job = {}) {
     ? clampScore(Math.round((matchedWeight / totalWeight) * 100))
     : null;
 
+  const normalizedMatched = normalizeKeywordList(matchedKeywords);
+  const normalizedMissing = normalizeKeywordList(missingKeywords, normalizedMatched);
+
   return {
     keywordScore,
-    keywordsMatched: matchedKeywords,
-    keywordsMissing: missingKeywords,
-    totalKeywords: matchedKeywords.length + missingKeywords.length,
+    keywordsMatched: normalizedMatched,
+    keywordsMissing: normalizedMissing,
+    totalKeywords: normalizedMatched.length + normalizedMissing.length,
   };
+}
+
+function normalizeKeywordList(items = [], exclude = []) {
+  const excludeSet = new Set(exclude.map(keywordCanonicalKey));
+  const seen = new Set();
+  const output = [];
+
+  for (const item of items) {
+    const label = cleanKeywordLabel(item);
+    if (!label) continue;
+    if (!isMeaningfulKeywordLabel(label)) continue;
+
+    const key = keywordCanonicalKey(label);
+    if (!key || seen.has(key) || excludeSet.has(key)) continue;
+
+    seen.add(key);
+    output.push(label);
+  }
+
+  return output;
+}
+
+function cleanKeywordLabel(value) {
+  const text = String(value || "")
+    .replace(/\s+/g, " ")
+    .replace(/\bpython\b/gi, "Python")
+    .replace(/\bjava\b/gi, "Java")
+    .replace(/\baws\b/gi, "AWS")
+    .replace(/\bgcp\b/gi, "GCP")
+    .replace(/\bgraphql\b/gi, "GraphQL")
+    .replace(/\bterraform\b/gi, "Terraform")
+    .replace(/\bsnowflake\b/gi, "Snowflake")
+    .replace(/\bnode\.?js\b/gi, "Node.js")
+    .replace(/\bci\/cd\b/gi, "CI/CD")
+    .trim();
+
+  return text;
+}
+
+function keywordCanonicalKey(value) {
+  return normalizeForKeywordMatch(value)
+    .replace(/\bpython\b/g, "python")
+    .replace(/\bnode js\b/g, "node.js")
+    .trim();
+}
+
+function isMeaningfulKeywordLabel(text) {
+  const normalized = normalizeForKeywordMatch(text);
+  if (!normalized) return false;
+  if (SOFT_SKILL_KEYWORDS.has(normalized)) return false;
+  if (GENERIC_SINGLE_WORDS.has(normalized)) return false;
+  if (DISALLOWED_AUTO_KEYWORD_TOKENS.has(normalized)) return false;
+  if (normalized.split(" ").length > 4) return false;
+  if (normalized.length > 40) return false;
+  if (/\b(?:hands on|cross functional|problem solving|well documented|high quality|communication skills|constructive feedback|capital markets|cloud technologies)\b/.test(normalized)) {
+    return false;
+  }
+  return true;
 }
 
 function escapeRegExp(value) {
@@ -346,7 +412,9 @@ const GENERIC_PHRASES = new Set([
   "software engineer",
   "engineering team",
   "cross functional",
+  "cross-functional",
   "problem solving",
+  "problem-solving",
   "best practices",
   "computer science",
   "product management",
@@ -358,6 +426,16 @@ const GENERIC_PHRASES = new Set([
   "and/or assessment",
   "applicants requirements",
   "expanding internationally",
+  "hands on",
+  "hands-on",
+  "well documented",
+  "well-documented",
+  "high quality",
+  "high-quality",
+  "communication skills",
+  "constructive feedback",
+  "capital markets",
+  "cloud technologies",
 ]);
 
 const GENERIC_PHRASE_PARTIALS = [
@@ -428,6 +506,24 @@ const DISALLOWED_AUTO_KEYWORD_TOKENS = new Set([
   "infrastructure",
   "schema",
   "warehouses",
+  "hands-on",
+]);
+
+const SOFT_SKILL_KEYWORDS = new Set([
+  "hands on",
+  "hands-on",
+  "cross functional",
+  "cross-functional",
+  "problem solving",
+  "problem-solving",
+  "well documented",
+  "well-documented",
+  "high quality",
+  "high-quality",
+  "communication skills",
+  "constructive feedback",
+  "capital markets",
+  "cloud technologies",
 ]);
 
 const KEYWORD_CATALOG = [
@@ -487,22 +583,32 @@ const KEYWORD_CATALOG = [
 
 // ---------- LLM callers ----------
 
-async function callOpenAI(system, user, apiKey) {
+async function callOpenAI(system, user, apiKey, options = {}) {
+  const {
+    model = "gpt-5.1",
+    reasoningEffort = "medium",
+  } = options;
+  const body = {
+    model,
+    temperature: 0.4,
+    max_tokens: 2000,
+    messages: [
+      { role: "system", content: system },
+      { role: "user", content: user },
+    ],
+  };
+
+  if (typeof model === "string" && model.startsWith("gpt-5")) {
+    body.reasoning_effort = reasoningEffort || "medium";
+  }
+
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${apiKey}`,
     },
-    body: JSON.stringify({
-      model: "gpt-4o",
-      temperature: 0.4,
-      max_tokens: 2000,
-      messages: [
-        { role: "system", content: system },
-        { role: "user", content: user },
-      ],
-    }),
+    body: JSON.stringify(body),
   });
 
   if (!res.ok) {

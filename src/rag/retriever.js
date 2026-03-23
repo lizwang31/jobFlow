@@ -8,6 +8,10 @@ const JOBS_STORAGE_KEY = "jobsIndex";
 
 function storageGet(keys) {
   return new Promise((resolve, reject) => {
+    if (!chrome?.storage?.local?.get) {
+      reject(new Error("Extension storage.local is unavailable."));
+      return;
+    }
     chrome.storage.local.get(keys, (result) => {
       const err = chrome.runtime.lastError;
       if (err) reject(new Error(err.message));
@@ -18,6 +22,10 @@ function storageGet(keys) {
 
 function storageSet(obj) {
   return new Promise((resolve, reject) => {
+    if (!chrome?.storage?.local?.set) {
+      reject(new Error("Extension storage.local is unavailable."));
+      return;
+    }
     chrome.storage.local.set(obj, () => {
       const err = chrome.runtime.lastError;
       if (err) reject(new Error(err.message));

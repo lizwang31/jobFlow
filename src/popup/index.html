@@ -253,14 +253,32 @@ body {
     <div class="setting-group">
       <label class="setting-label">LLM Provider</label>
       <div class="llm-toggle">
-        <button class="llm-opt active" data-llm="openai">OpenAI GPT-4o</button>
+        <button class="llm-opt active" data-llm="openai">OpenAI</button>
         <button class="llm-opt" data-llm="anthropic">Claude (Anthropic)</button>
       </div>
     </div>
     <div class="setting-group">
+      <label class="setting-label" for="s-openai-model">OpenAI Analysis Model</label>
+      <select class="setting-input" id="s-openai-model">
+        <option value="gpt-5.1">gpt-5.1</option>
+        <option value="gpt-4o">gpt-4o</option>
+      </select>
+      <p class="setting-hint">Used only when the provider is set to OpenAI.</p>
+    </div>
+    <div class="setting-group">
+      <label class="setting-label" for="s-openai-reasoning">OpenAI Reasoning Effort</label>
+      <select class="setting-input" id="s-openai-reasoning">
+        <option value="medium">medium</option>
+        <option value="low">low</option>
+        <option value="high">high</option>
+        <option value="none">none</option>
+      </select>
+      <p class="setting-hint">Applied to GPT-5 models. GPT-4o ignores this setting.</p>
+    </div>
+    <div class="setting-group">
       <label class="setting-label">OpenAI API Key</label>
       <input class="setting-input" id="s-openai" placeholder="sk-..." type="password">
-      <p class="setting-hint">Used for embeddings (required) and GPT-4o analysis (optional)</p>
+      <p class="setting-hint">Used for embeddings and OpenAI analysis.</p>
     </div>
     <div class="setting-group">
       <label class="setting-label">Anthropic API Key</label>
@@ -268,13 +286,14 @@ body {
       <p class="setting-hint">Required only when using Claude for analysis</p>
     </div>
     <div class="setting-group">
-      <label class="setting-label">Pinecone API Key</label>
+      <label class="setting-label">Pinecone API Key (Optional)</label>
       <input class="setting-input" id="s-pinecone-key" placeholder="xxxxxxxx-xxxx-..." type="password">
+      <p class="setting-hint">Optional. Leave blank to use local resume indexing only.</p>
     </div>
     <div class="setting-group">
-      <label class="setting-label">Pinecone Index Host</label>
+      <label class="setting-label">Pinecone Index Host (Optional)</label>
       <input class="setting-input" id="s-pinecone-host" placeholder="https://xxx-xxxx.svc.xxx.pinecone.io">
-      <p class="setting-hint">Copy this from Pinecone Console → your Index → Host</p>
+      <p class="setting-hint">Optional. Only needed if you want Pinecone sync. Copy this from Pinecone Console → your Index → Host.</p>
     </div>
 
     <button class="btn-primary" id="save-settings-btn">Save Settings</button>
