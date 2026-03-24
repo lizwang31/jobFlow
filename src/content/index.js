@@ -2272,11 +2272,22 @@ function checkForApplicationSubmitted(reason = "unknown") {
     const recentApply = hasRecentApplyInteraction();
 
     const successDialog = getApplicationSentDialog();
+    // LinkedIn now shows "Application submitted" in the job details panel
+    // (not inside the Easy Apply modal), so we need to scan that container.
+    const linkedInDetailsPanel = SITE === "linkedin" && recentApply
+      ? document.querySelector([
+          ".jobs-search__job-details--container",
+          ".scaffold-layout__detail",
+          ".jobs-details",
+          "[data-view-name='job-details']",
+        ].join(", "))
+      : null;
     const candidates = [
       successDialog,
       document.querySelector("[role='alert']"),
       document.querySelector("[aria-live='assertive']"),
       document.querySelector("[aria-live='polite']"),
+      linkedInDetailsPanel,
       SITE === "indeed" ? document.body : null,
     ].filter(Boolean);
 
