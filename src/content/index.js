@@ -721,8 +721,6 @@ function isSubmissionConfirmationText(text) {
     "we've received your application",
     "thanks for applying",
     "thank you for applying",
-    "successfully applied",
-    "you applied",
   ]);
 }
 
@@ -2158,7 +2156,6 @@ function isSubmitLikeText(text) {
     "submit application",
     "send application",
     "submit your application",
-    "submit"
   ]);
 }
 
@@ -2189,7 +2186,7 @@ function markApplyInteraction(reason = "unknown") {
   debug("Apply interaction marked:", reason, new Date(lastApplyInteractionAt).toISOString());
 }
 
-function hasRecentApplyInteraction(maxAgeMs = 15 * 60 * 1000) {
+function hasRecentApplyInteraction(maxAgeMs = 3 * 60 * 1000) {
   return Date.now() - lastApplyInteractionAt <= maxAgeMs;
 }
 
@@ -2227,8 +2224,6 @@ function scheduleSubmissionCheck(reason) {
   window.setTimeout(() => checkForApplicationSubmitted(reason), 800);
   window.setTimeout(() => checkForApplicationSubmitted(reason), 1800);
   window.setTimeout(() => checkForApplicationSubmitted(reason), 3200);
-  window.setTimeout(() => checkForApplicationSubmitted(reason), 5500);
-  window.setTimeout(() => checkForApplicationSubmitted(reason), 9000);
 }
 
 function checkForEasyApplyModal() {
@@ -2282,7 +2277,7 @@ function checkForApplicationSubmitted(reason = "unknown") {
       document.querySelector("[role='alert']"),
       document.querySelector("[aria-live='assertive']"),
       document.querySelector("[aria-live='polite']"),
-      SITE === "indeed" || recentApply ? document.body : null,
+      SITE === "indeed" ? document.body : null,
     ].filter(Boolean);
 
     let submitted = candidates.some((node) =>
@@ -2351,9 +2346,18 @@ function installPolling() {
     try {
       const jobId = getCurrentJobId();
       if (jobId && jobId !== lastPolledJobId) {
+        const prevId = lastPolledJobId;
         lastPolledJobId = jobId;
         debug("Job changed:", jobId);
         cacheCurrentJobSnapshot("poll");
+
+        // Clear stale pending application when navigating to a different job,
+        // unless we're still in an active apply interaction
+        if (prevId && !hasRecentApplyInteraction()) {
+          pendingApplication = null;
+          savePendingApplicationContext(null);
+          debug("Cleared stale pending application on job change");
+        }
       }
     } catch (e) {
       debugError("polling failed:", e);
@@ -2396,8 +2400,7 @@ function installClickListener() {
           isSubmitLikeText(ariaLabel) ||
           !!clickable?.closest?.("[aria-label*='Submit application']") ||
           !!clickable?.closest?.("[data-easy-apply-submit-button]") ||
-          !!clickable?.closest?.("button[form*='easyApply']") ||
-          !!clickable?.closest?.("button[type='submit']");
+          !!clickable?.closest?.("button[form*='easyApply']");
 
         if (isSubmitBtn) {
           debug("Submit-like click captured");
