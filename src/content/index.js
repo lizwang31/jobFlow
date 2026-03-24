@@ -2445,6 +2445,60 @@ function installClickListener() {
   );
 }
 
+// ---------- Workday detection ----------
+
+function initWorkdayDetection() {
+  const path = window.location.pathname.toLowerCase();
+
+  // Stage 3 — Confirmation / post-submit page (userHome, thankYou, etc.)
+  const isConfirmation =
+    path.includes("userhome") ||
+    path.includes("thankyou") ||
+    path.includes("thank-you") ||
+    path.includes("/home") ||
+    path.includes("/confirmation");
+
+  if (isConfirmation) {
+    const stored = pendingApplication || loadPendingApplicationContext();
+    if (stored && isKnownTitle(stored.job?.title)) {
+      debug("Workday confirmation page — recording:", stored.job.title);
+      // Use "submitted:" prefix so tryRecordCurrentJob prefers stored identity
+      setTimeout(() => tryRecordCurrentJob("submitted:workday-confirmation"), 600);
+    }
+    return;
+  }
+
+  // Stage 2 — Inside the apply form (URL contains /apply)
+  if (path.includes("/apply")) {
+    markApplyInteraction("workday-apply");
+    capturePendingApplication("workday-apply");
+    debug("Workday apply page — pending captured");
+    return;
+  }
+
+  // Stage 1 — Job details page: cache snapshot + watch for Apply click
+  cacheCurrentJobSnapshot("workday-init");
+  document.addEventListener("click", (e) => {
+    try {
+      const el = e.target instanceof Element ? e.target : null;
+      if (!el) return;
+      const { clickable, text, ariaLabel } = getActionContext(el);
+      if (
+        isApplyLikeText(text) ||
+        isApplyLikeText(ariaLabel) ||
+        !!clickable?.closest?.("[data-automation-id='applyButton']") ||
+        !!clickable?.closest?.("[data-automation-id*='apply']")
+      ) {
+        debug("Workday Apply click detected");
+        markApplyInteraction("workday-apply-click");
+        capturePendingApplication("workday-apply-click");
+      }
+    } catch (err) {
+      debugError("Workday click listener failed:", err);
+    }
+  }, true);
+}
+
 // ---------- Init ----------
 
 async function init() {
@@ -2480,6 +2534,11 @@ async function init() {
       setTimeout(checkForEasyApplyModal, 1000);
       setTimeout(checkForEasyApplyModal, 2500);
       setTimeout(() => checkForApplicationSubmitted("init"), 2000);
+    }
+
+    // Workday: full-page-load flow, handle each stage on init
+    if (SITE === "workday") {
+      initWorkdayDetection();
     }
 
     debug("Init success");
