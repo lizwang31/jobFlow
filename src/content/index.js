@@ -920,6 +920,7 @@ function showToast(msg) {
 function storageLocalGet(key) {
   return new Promise((resolve) => {
     try {
+      if (!chrome?.storage?.local) { resolve(undefined); return; }
       chrome.storage.local.get([key], (result) => {
         const err = chrome.runtime?.lastError;
         if (err) {
@@ -947,6 +948,7 @@ function storageLocalGet(key) {
 function storageLocalSet(key, value) {
   return new Promise((resolve) => {
     try {
+      if (!chrome?.storage?.local) { resolve(); return; }
       chrome.storage.local.set({ [key]: value }, () => {
         const err = chrome.runtime?.lastError;
         if (err) {
@@ -972,6 +974,7 @@ function storageLocalSet(key, value) {
 function storageLocalRemove(key) {
   return new Promise((resolve) => {
     try {
+      if (!chrome?.storage?.local) { resolve(); return; }
       chrome.storage.local.remove(key, () => {
         const err = chrome.runtime?.lastError;
         if (err) {
